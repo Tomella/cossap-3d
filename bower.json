@@ -1,0 +1,25 @@
+{
+  "name": "cossap-3d",
+  "version": "0.0.1",
+  "description": "COSSAP 3d is an APP for viewing common geospatial file formats in WebGL.",
+  "homepage": "https://github.com/Tomella/cossap-3d",
+  "keywords": [
+    "gis",
+    "3d",
+    "geospatial",
+    "transform"
+  ],
+  "license": "LICENCE",
+  "dependencies": {
+    "explorer-3d": "git@github.com:Tomella/explorer-3d.git"
+  },
+  "ignore": [
+    "**/.*",
+    "examples",
+    "resources",
+    "tests",
+    "source",
+    "docs",
+    "*.json"
+  ]
+}

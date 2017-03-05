@@ -1,0 +1,27 @@
+{
+  "name": "elevation",
+  "version": "0.0.1",
+  "description": "Elevation is an API for loading common geospatial file formats for elevation values.",
+  "homepage": "https://github.com/Tomella/elevation",
+  "main": "dist/elevation.js",
+  "keywords": [
+    "gis",
+    "2d",
+    "geospatial",
+    "load"
+  ],
+  "license": "LICENCE",
+  "dependencies": {
+  },
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "examples",
+    "resources",
+    "tests",
+    "source",
+    "docs",
+    "*.json",
+    "*.js"
+  ]
+}

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+   <meta charset='UTF-8'>
+   <meta name="robots" content="noindex">
+   <title>COSSAP 3D</title>
+   <link href="cossap3d.css" rel="stylesheet" type="text/css">
+</head>
+
+<body>
+   <div class="c3d-controls">
+      <h3 bind-text="text.controlsHeading">
+         Suburface View
+      </h3>
+
+      <div class="c3d-surface-list">
+         <div class="surface">
+            <h4>View Properties</h4>
+
+            <div class="texture">
+               <label>Stretch Elevation</label>
+               (<span id="verticalExaggerationValue">1</span>)
+               <input min="0" max="100" step="0.2" id="verticalExaggeration" type="range" value="1"/>
+            </div>
+         </div>
+      </div>
+
+
+      <div class="c3d-surface-list">
+         <div class="surface">
+            <h4>Surface Properties</h4>
+
+            <div class="texture">
+               <label>Active surface</label>
+               <div class="surface-name">
+                  <div>
+                     <label>Satelite imagery</label>
+                     <input type="radio" name ="surfaceMaterialRadio" value="image" checked="checked" />
+                  </div>
+                  <div>
+                     <label>Topographic</label>
+                     <input type="radio" name ="surfaceMaterialRadio" value="topo" />
+                  </div>
+                  <div>
+                     <label>Wireframe</label>
+                     <input type="radio" name ="surfaceMaterialRadio" value="wireframe" />
+                  </div>
+                  <div>
+                     <label>Heatmap</label>
+                     <input type="radio" name ="surfaceMaterialRadio" value="heatmap" />
+                  </div>
+               </div>
+            </div>
+
+            <div class="opacity">
+               <label>Opacity</label>
+               <input min="0" max="1" step="0.05" id="surfaceOpacity" type="range" value="0.8" />
+            </div>
+
+         </div>
+      </div>
+
+      <div class="options-list">
+         <h4>Boreholes Properties</h4>
+         <label for="borehole_visibility">Show/Hide Boreholes</label>
+         <input type="checkbox" id="showHideBoreholes" checked="checked" style="float:right">
+         <br>
+
+      </div>
+   </div>
+
+   <div id="target" class="c3d-target"></div>
+
+   <div id="helpPanel" class="open" style="width: 300px">
+      <hr/>
+      <strong>Navgation Keys</strong>
+      <ul>
+         <li>A - Rotate anticlockwise</li>
+         <li>D - Rotate clockwise</li>
+         <li>W - Zoom in (also left mouse button)</li>
+         <li>S - Zoom out (also right mouse button)</li>
+         <li>R - Tilt towards</li>
+         <li>F - Tilt away</li>
+      </ul>
+   </div>
+
+   <!-- Stuff we didn't write-->
+   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r83/three.js"></script>
+   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.3.15/proj4.js"></script>
+   <!-- Make IE11 happy -->
+
+   <script src="cossap3d/bower_components/geotiffparser/js/GeotiffParser.js"></script>
+
+   <!-- Our API's -->
+   <script src="cossap3d/bower_components/elevation/dist/elevation.js"></script>
+   <script src="cossap3d/bower_components/explorer-3d/dist/explorer3d.js"></script>
+   <script src="cossap3d/cossap3d.js"></script>
+
+   <script type="text/javascript">
+      Cossap3d.bootstrap();
+   </script>
+
+   <!-- Our example code -->
+</body>
+
+</html>

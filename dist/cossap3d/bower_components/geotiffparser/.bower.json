@@ -1,0 +1,13 @@
+{
+  "name": "geotiffparser",
+  "homepage": "https://github.com/xlhomme/GeotiffParser.js",
+  "_release": "e1bcbe7036",
+  "_resolution": {
+    "type": "branch",
+    "branch": "master",
+    "commit": "e1bcbe703618ec6a1e2f74167b18b66dd09f7914"
+  },
+  "_source": "git@github.com:xlhomme/GeotiffParser.js.git",
+  "_target": "*",
+  "_originalSource": "git@github.com:xlhomme/GeotiffParser.js.git"
+}

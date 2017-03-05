@@ -1,0 +1,5 @@
+#!/bin/bash
+bower update
+sudo cp -rf dist /var/www/html/geospeedster
+cd examples
+sudo cp -rf * /var/www/html/geospeedster
