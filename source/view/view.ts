@@ -42,16 +42,26 @@ export class View {
          this.factory.extend(surface, false);
       });
 
-      this.surface.parse().then(surface => {
+      this.surface.addEventListener(SurfaceManager.SURFACE_CHANGED, event => {
+         let surface = event.data;
          this.mappings.surface = surface;
-         // We got back a document so transform and show.
-         this.factory.show(surface);
       });
 
-      this.boreholes = new BoreholesManager(Object.assign({bbox}, this.options.boreholes));
-      this.boreholes.parse().then(data => {
-         this.mappings.boreholes = data;
-         this.factory.show(data);
+      this.surface.parse().then(surface => {
+         this.mappings.surface = surface;
+
+         this.boreholes = new BoreholesManager(Object.assign({bbox}, this.options.boreholes));
+         this.boreholes.parse().then(data => {
+            if (data) {
+               this.mappings.boreholes = data;
+               this.factory.extend(data, false);
+            }
+         }).catch(err => {
+            console.log("ERror boReholes");
+            console.log(err);
+         });
+         // We got back a document so transform and show.
+         this.factory.show(surface);
       });
    }
 

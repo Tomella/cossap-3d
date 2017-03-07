@@ -35,7 +35,6 @@ export class Surface extends THREE.EventDispatcher {
             this.fetchWireframeMaterial();
             this.fetchMaterials();
          });
-
          return data;
       }).catch(function (err) {
          Explorer3d.Logger.error("We failed in the simple example");
@@ -79,6 +78,7 @@ export class Surface extends THREE.EventDispatcher {
 
    switchSurface(name) {
       let opacity = this.surface.material.opacity;
+      this.surface.visible = true;
       this.surface.material = this.materials[name];
       this.surface.material.opacity = opacity;
       this.surface.material.needsUpdate = true;

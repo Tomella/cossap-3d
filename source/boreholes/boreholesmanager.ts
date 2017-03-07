@@ -13,6 +13,10 @@ export class BoreholesManager {
       this.boreholes =  new BoreholesLoader(this.options);
 
       return this.boreholes.load().then(data => {
+         if (!data || !data.length) {
+            return null;
+         }
+
          let lineMaterial = new THREE.LineBasicMaterial({color: 0xffaaaa, linewidth: 1});
          let lineGeom = new THREE.Geometry();
          let bbox = this.options.bbox;

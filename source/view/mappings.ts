@@ -41,7 +41,8 @@ export class Mappings extends THREE.EventDispatcher {
       element.addEventListener("change", () => {
          if (this._surface) {
             this._surface.material.opacity = this.dom.surfaceOpacity.value;
-         }this.dom.surfaceOpacity.blur();
+         }
+         this.dom.surfaceOpacity.blur();
       });
    }
 

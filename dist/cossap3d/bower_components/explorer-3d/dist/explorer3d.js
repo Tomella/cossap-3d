@@ -1711,7 +1711,7 @@ var Logger = (function () {
     function Logger() {
     }
     Logger.noop = function () { };
-
+    
     Object.defineProperty(Logger, "level", {
         set: function (value) {
             var num = parseInt(value);
@@ -3240,7 +3240,7 @@ var World = (function () {
         this.controls.enableZoom = true;
         this.controls.userPanSpeed = 20000;
     };
-
+    
     World.prototype.addFirstPersonControls = function () {
         this.controls = new THREE.FirstPersonControls(this.camera, this.renderer.domElement);
         // this.controls.movementSpeed = this.options.radius;
@@ -3249,7 +3249,7 @@ var World = (function () {
         // this.controls.autoForward = false;
         // this.controls.dragToLook = false;
     };
-
+    
     World.prototype.addFlyControls = function () {
         this.controls = new THREE.FlyControls(this.camera, this.renderer.domElement);
         this.controls.movementSpeed = this.options.radius;
@@ -3258,7 +3258,7 @@ var World = (function () {
         this.controls.autoForward = false;
         this.controls.dragToLook = false;
     };
-
+    
     World.prototype.addLights = function () {
         var data = this.options.lights;
         this.lights[0] = new THREE.AmbientLight(data.ambient.color);
@@ -3271,7 +3271,7 @@ var World = (function () {
         this.lights[2].position.set(dir.center.x + dir.position.dx, dir.center.y + dir.position.dy, dir.center.z - dir.position.dz);
         this.scene.add(this.lights[2]);
     };
-
+    
     World.prototype.updateLights = function () {
         this.scene.remove(this.lights[0]);
         this.scene.remove(this.lights[1]);
@@ -3980,7 +3980,7 @@ var ElevationMaterial = (function (_super) {
      *       resolutionX
      *       resolutionY
      *       data          // Single dimension array of z values
-
+ 
      *    optional:
      *       maxDepth     // Used to scale water, default 5000m (positive depth)
      *       maxElevation // Used to scale elevation, default 2200m
@@ -4110,6 +4110,7 @@ var EsriImageryLoader = (function () {
     EsriImageryLoader.prototype.load = function () {
         var url = this.options.esriTemplate
             .replace("${bbox}", this.options.bbox)
+            .replace("${format}", "JSON")
             .replace("${size}", this.options.resolutionX + "," + this.options.resolutionY);
         var loader = new Elevation.HttpTextLoader(url, this.options);
         // Get the ESRI Metadata.
@@ -4126,9 +4127,54 @@ var WcsEsriImageryParser = (function (_super) {
         _this.options = options;
         return _this;
     }
+    WcsEsriImageryParser.prototype.loadImage = function (url, bbox) {
+        var _this = this;
+        // Merge the options
+        var options = Object.assign({}, this.options, { bbox: bbox });
+        var restLoader = new Elevation.WcsXyzLoader(options);
+        return restLoader.load().then(function (res) {
+            var resolutionX = _this.options.resolutionX;
+            var resolutionY = res.length / resolutionX;
+            var geometry = new THREE.PlaneGeometry(resolutionX, resolutionY, resolutionX - 1, resolutionY - 1);
+            var bbox = _this.options.bbox;
+            geometry.vertices.forEach(function (vertice, i) {
+                var xyz = res[i];
+                vertice.z = xyz.z;
+                vertice.x = xyz.x;
+                vertice.y = xyz.y;
+            });
+            if (res.length) {
+                geometry.computeBoundingSphere();
+                geometry.computeFaceNormals();
+                geometry.computeVertexNormals();
+            }
+            var loader = new THREE.TextureLoader();
+            loader.crossOrigin = "";
+            var opacity = _this.options.opacity ? _this.options.opacity : 1;
+            var material = new THREE.MeshPhongMaterial({
+                map: loader.load(url, function (event) {
+                    _this.dispatchEvent(new Event(WcsEsriImageryParser.TEXTURE_LOADED_EVENT, mesh));
+                }),
+                transparent: true,
+                opacity: opacity,
+                side: THREE.DoubleSide
+            });
+            var mesh = new THREE.Mesh(geometry, material);
+            mesh.userData = _this.options;
+            return mesh;
+        });
+    };
     WcsEsriImageryParser.prototype.parse = function () {
         var _this = this;
         var options = Object.assign({}, this.options, { resolutionX: this.options.imageWidth, resolutionY: this.options.imageHeight });
+        if (this.options.imageOnly) {
+            var url = this.options.esriTemplate
+                .replace("${bbox}", this.options.bbox)
+                .replace("$format}", "Image")
+                .replace("${size}", this.options.resolutionX + "," + this.options.resolutionY);
+            return this.loadImage(url, this.options.bbox);
+        }
+        // Fall through here to get the metadata first.
         return new EsriImageryLoader(options).load().then(function (esriData) {
             // Get the extent returned by ESRI
             var extent = esriData.extent;
@@ -4142,41 +4188,7 @@ var WcsEsriImageryParser = (function (_super) {
                 bbox: bbox,
                 aspectRatio: esriData.width / esriData.height
             }, esriData)));
-            // Merge the options
-            var options = Object.assign({}, _this.options, { bbox: bbox });
-            var restLoader = new Elevation.WcsXyzLoader(options);
-            return restLoader.load().then(function (res) {
-                var resolutionX = _this.options.resolutionX;
-                var resolutionY = res.length / resolutionX;
-                var geometry = new THREE.PlaneGeometry(resolutionX, resolutionY, resolutionX - 1, resolutionY - 1);
-                var bbox = _this.options.bbox;
-                geometry.vertices.forEach(function (vertice, i) {
-                    var xyz = res[i];
-                    vertice.z = xyz.z;
-                    vertice.x = xyz.x;
-                    vertice.y = xyz.y;
-                });
-                if (res.length) {
-                    geometry.computeBoundingSphere();
-                    geometry.computeFaceNormals();
-                    geometry.computeVertexNormals();
-                }
-                var loader = new THREE.TextureLoader();
-                loader.crossOrigin = "";
-                var url = esriData.href;
-                var opacity = _this.options.opacity ? _this.options.opacity : 1;
-                var material = new THREE.MeshPhongMaterial({
-                    map: loader.load(url, function (event) {
-                        _this.dispatchEvent(new Event(WcsEsriImageryParser.TEXTURE_LOADED_EVENT, mesh));
-                    }),
-                    transparent: true,
-                    opacity: opacity,
-                    side: THREE.DoubleSide
-                });
-                var mesh = new THREE.Mesh(geometry, material);
-                mesh.userData = _this.options;
-                return mesh;
-            });
+            return _this.loadImage(esriData.href, bbox);
         });
     };
     return WcsEsriImageryParser;
@@ -4244,7 +4256,7 @@ var WcsWmsSurfaceParser = (function (_super) {
                         .replace("${width}", this.options.imageWidth ? this.options.imageWidth : 512)
                         .replace("${height}", this.options.imageHeight ? this.options.imageHeight : 512)
                         .replace("${bbox}", bbox.join(","));
-
+            
                      let opacity = this.options.opacity ? this.options.opacity : 1;
                      let material = new THREE.MeshPhongMaterial({
                         map: loader.load(url),
@@ -4630,7 +4642,7 @@ var Logger$1 = (function () {
     function Logger() {
     }
     Logger.noop = function () { };
-
+    
     Object.defineProperty(Logger, "level", {
         set: function (value) {
             var num = parseInt(value);

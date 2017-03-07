@@ -302,6 +302,7 @@ var Surface = (function (_super) {
     };
     Surface.prototype.switchSurface = function (name) {
         var opacity = this.surface.material.opacity;
+        this.surface.visible = true;
         this.surface.material = this.materials[name];
         this.surface.material.opacity = opacity;
         this.surface.material.needsUpdate = true;
@@ -319,7 +320,7 @@ var SurfaceManager = (function (_super) {
     function SurfaceManager(options) {
         var _this = _super.call(this) || this;
         _this.options = options;
-        _this.materials = {};
+        _this.lastSurfaceName = "image";
         return _this;
     }
     SurfaceManager.prototype.parse = function () {
@@ -344,6 +345,7 @@ var SurfaceManager = (function (_super) {
         console.log(data);
         var aspectRatio = data.width / data.height;
         var options = Object.assign({}, this.options, {
+            loadImage: true,
             resolutionX: this.options.hiResX,
             resolutionY: Math.round(this.options.hiResX * aspectRatio),
             imageWidth: this.options.hiResImageWidth,
@@ -352,22 +354,51 @@ var SurfaceManager = (function (_super) {
         this.hiResSurface = new Surface(options);
         this.hiResSurface.addEventListener(Surface.TEXTURE_LOADED_EVENT, function (event) {
             var data = event.data;
-            _this.surface.surface.visible = false;
-            // We now have the hires THREE JS layer.
-            _this.hiResSurface = data;
+            _this.transitionToHiRes(data);
             _this.dispatchEvent({ type: SurfaceManager.HIRES_LOADED, data: data });
         });
         this.hiResSurface.parse();
     };
+    SurfaceManager.prototype.transitionToHiRes = function (data) {
+        var loRes = this.surface.surface;
+        run();
+        function run() {
+            setTimeout(function () {
+                var opacity = loRes.material.opacity - 0.05;
+                console.log("Running loRes = " + opacity);
+                if (opacity < 0) {
+                    loRes.visible = false;
+                }
+                else {
+                    loRes.material.opacity = opacity;
+                    run();
+                }
+            }, 30);
+        }
+    };
     SurfaceManager.prototype.switchSurface = function (name) {
-        var opacity = this.surface.surface.material.opacity;
-        this.surface.surface.material = this.materials[name];
-        this.surface.surface.material.opacity = opacity;
-        this.surface.surface.material.needsUpdate = true;
+        var actor;
+        if (!this.hiResSurface) {
+            actor = this.surface;
+        }
+        else {
+            if (name === "wireframe") {
+                actor = this.surface;
+                this.hiResSurface.surface.visible = false;
+            }
+            else {
+                actor = this.hiResSurface;
+                this.surface.surface.visible = false;
+            }
+            this.dispatchEvent({ type: SurfaceManager.SURFACE_CHANGED, data: actor.surface });
+        }
+        actor.switchSurface(name);
+        return actor;
     };
     return SurfaceManager;
 }(THREE.EventDispatcher));
 SurfaceManager.HIRES_LOADED = "surfacemanager.hires.loaded";
+SurfaceManager.SURFACE_CHANGED = "surfacemanager.surface.changed";
 
 // Given a bbox, return a 2d grid with the same x, y coordinates plus a z-coordinate as returned by the 1d TerrainLoader.
 var BoreholesLoader = (function () {
@@ -391,6 +422,9 @@ var BoreholesManager = (function () {
         var _this = this;
         this.boreholes = new BoreholesLoader(this.options);
         return this.boreholes.load().then(function (data) {
+            if (!data || !data.length) {
+                return null;
+            }
             var lineMaterial = new THREE.LineBasicMaterial({ color: 0xffaaaa, linewidth: 1 });
             var lineGeom = new THREE.Geometry();
             var bbox = _this.options.bbox;
@@ -440,15 +474,24 @@ var View = (function () {
             _this.mappings.surface = surface;
             _this.factory.extend(surface, false);
         });
+        this.surface.addEventListener(SurfaceManager.SURFACE_CHANGED, function (event) {
+            var surface = event.data;
+            _this.mappings.surface = surface;
+        });
         this.surface.parse().then(function (surface) {
             _this.mappings.surface = surface;
+            _this.boreholes = new BoreholesManager(Object.assign({ bbox: bbox }, _this.options.boreholes));
+            _this.boreholes.parse().then(function (data) {
+                if (data) {
+                    _this.mappings.boreholes = data;
+                    _this.factory.extend(data, false);
+                }
+            }).catch(function (err) {
+                console.log("ERror boReholes");
+                console.log(err);
+            });
             // We got back a document so transform and show.
             _this.factory.show(surface);
-        });
-        this.boreholes = new BoreholesManager(Object.assign({ bbox: bbox }, this.options.boreholes));
-        this.boreholes.parse().then(function (data) {
-            _this.mappings.boreholes = data;
-            _this.factory.show(data);
         });
     };
     View.prototype.destroy = function () {
@@ -472,12 +515,12 @@ Config.preferences = {
         },
         template: "http://services.ga.gov.au/site_9/services/DEM_SRTM_1Second_over_Bathymetry_Topography/MapServer/WCSServer?SERVICE=WCS&VERSION=1.0.0&REQUEST=GetCoverage" +
             "&coverage=1&CRS=EPSG:3857&BBOX=${bbox}&FORMAT=GeoTIFF&RESX=${resx}&RESY=${resy}&RESPONSE_CRS=EPSG:3857&HEIGHT=${height}&WIDTH=${width}",
-        esriTemplate: "http://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&f=JSON&format=jpg&size=${size}",
+        esriTemplate: "http://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&f=${format}&format=jpg&size=${size}",
         topoTemplate: "http://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/export?bbox=${bbox}&f=image&format=jpg&size=${width},${height}",
-        resolutionX: 100,
+        resolutionX: 60,
         imageWidth: 256,
-        hiResX: 700,
-        hiResImageWidth: 1024,
+        hiResX: 400,
+        hiResImageWidth: 2048,
         opacity: 1,
         extent: new Elevation.Extent2d(1000000, -10000000, 20000000, -899000),
     },

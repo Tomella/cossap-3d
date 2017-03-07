@@ -31,11 +31,11 @@
     "docs",
     "*.json"
   ],
-  "_release": "066eedc3cb",
+  "_release": "67f4544919",
   "_resolution": {
     "type": "branch",
     "branch": "master",
-    "commit": "066eedc3cbb5a55beba3ce0e2c283c4fbb251735"
+    "commit": "67f45449196a8fac3f7f5773c3c77c8d1e2831d0"
   },
   "_source": "git@github.com:Tomella/explorer-3d.git",
   "_target": "*",

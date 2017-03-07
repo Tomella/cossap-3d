@@ -3,11 +3,12 @@ declare var Explorer3d;
 
 export class SurfaceManager extends THREE.EventDispatcher {
    static HIRES_LOADED = "surfacemanager.hires.loaded";
-   materials: any = {};
-   surface;
-   hiResSurface;
+   static SURFACE_CHANGED = "surfacemanager.surface.changed";
+   surface: Surface;
+   hiResSurface: Surface;
    bbox: number[];
    aspectRatio: number;
+   lastSurfaceName = "image";
 
    constructor(public options: any) {
       super();
@@ -39,6 +40,7 @@ export class SurfaceManager extends THREE.EventDispatcher {
       let options = Object.assign({},
          this.options,
          {
+            loadImage: true,
             resolutionX: this.options.hiResX,
             resolutionY: Math.round(this.options.hiResX * aspectRatio),
             imageWidth: this.options.hiResImageWidth,
@@ -48,20 +50,47 @@ export class SurfaceManager extends THREE.EventDispatcher {
       this.hiResSurface = new Surface(options);
       this.hiResSurface.addEventListener(Surface.TEXTURE_LOADED_EVENT, event => {
          let data = event.data;
-         this.surface.surface.visible = false;
-         // We now have the hires THREE JS layer.
-         this.hiResSurface = data;
+         this.transitionToHiRes(data);
          this.dispatchEvent({type: SurfaceManager.HIRES_LOADED, data});
       });
 
       this.hiResSurface.parse();
    }
 
+   private transitionToHiRes(data) {
+      let loRes = this.surface.surface;
+      run();
+
+      function run() {
+         setTimeout(() => {
+            let opacity = loRes.material.opacity - 0.05;
+            console.log("Running loRes = " + opacity);
+            if (opacity < 0) {
+               loRes.visible = false;
+            } else {
+               loRes.material.opacity = opacity;
+               run();
+            }
+         }, 30);
+      }
+   }
+
    switchSurface(name) {
-      let opacity = this.surface.surface.material.opacity;
-      this.surface.surface.material = this.materials[name];
-      this.surface.surface.material.opacity = opacity;
-      this.surface.surface.material.needsUpdate = true;
+      let actor: Surface;
+      if (!this.hiResSurface) {
+         actor = this.surface;
+      } else {
+         if (name === "wireframe") {
+            actor = this.surface;
+            this.hiResSurface.surface.visible = false;
+         } else {
+            actor = this.hiResSurface;
+            this.surface.surface.visible = false;
+         }
+         this.dispatchEvent({ type: SurfaceManager.SURFACE_CHANGED, data: actor.surface});
+      }
+      actor.switchSurface(name);
+      return actor;
    }
 }
 
