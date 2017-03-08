@@ -22,7 +22,7 @@ gulp.task('workers', function () {
       .pipe(gulp.dest("dist/cossap3d/workers"));
 });
 
-gulp.task('build', function() {
+gulp.task('build', ['workerlib'], function() {
   return rollup({
       entry: './source/cossap3d.ts',
       plugins: [
@@ -33,6 +33,25 @@ gulp.task('build', function() {
     })
     .pipe(source('cossap3d.js'))
     .pipe(gulp.dest('./dist/cossap3d'));
+});
+
+gulp.task('workerlib', function() {
+  return rollup({
+      entry: './source/workerlib.ts',
+      plugins: [
+         rollupTypescript({typescript:ts})
+      ],
+		format: 'umd',
+		moduleName: 'Cossap3d',
+    })
+    .pipe(source('workerlib.js'))
+    .pipe(gulp.dest('./dist/cossap3d'));
+});
+
+
+gulp.task('workers', function () {
+   return gulp.src('./source/workers/**/*.js')
+      .pipe(gulp.dest("dist/workers"));
 });
 
 gulp.task('dist', ['build'], function () {
@@ -77,6 +96,7 @@ gulp.task('watch', function () {
    // We'll watch JS, SCSS and HTML files.
    gulp.watch('source/**/*.ts', ['tslint']);
    gulp.watch('views/**/*', ['views']);
+   gulp.watch(['source/workers/**/*.js'], ['workers']);
    gulp.watch(['source/**/*.js', 'source/**/*.ts'], ['dist']);
    gulp.watch('source/**/*.css', ['concatCss']);
 });
