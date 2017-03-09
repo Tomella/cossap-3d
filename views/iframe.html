@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+   <meta charset='UTF-8'>
+   <meta name="robots" content="noindex">
+   <title>COSSAP 3D in an Iframe</title>
+   <link href="cossap3d.css" rel="stylesheet" type="text/css">
+<style>
+.iframe {
+   position: fixed;
+   top:30px;
+   width: 97%;
+   height: 93%;
+}
+</style>
+
+
+</head>
+
+
+
+<body style="position:fixed">
+Use the same COSSAP buttons and pane control and set the src with the bounding box
+
+<iframe id="iframe" src="index.html?bbox=140,-39.5,150.1,-33.5" class="iframe"></iframe>
+
+<script type="text/javascript">
+var direction = -1;
+let small = 350;
+var percentage = 97;
+var iframe = document.getElementById("iframe");
+var body = document.body;
+
+function pulse() {
+   setTimeout(function() {
+      var rekt = iframe.getBoundingClientRect();
+      if (rekt.width <= small) {
+         direction = 1;
+      }
+
+      if (percentage >= 97) {
+         direction = -1;
+      }
+
+      percentage += direction * 0.1;
+
+      iframe.style.width = percentage + "%";
+      pulse();
+   }, 10);
+}
+
+pulse();
+
+
+</script>
+
+   <!-- Our example code -->
+</body>
+
+</html>

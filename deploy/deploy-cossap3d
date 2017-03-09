@@ -1,0 +1,6 @@
+#!/bin/bash
+cd /home/ec2-user/cossap-3d
+git pull
+bower update
+sudo mkdir -p /var/www/html/geospeedster/cossap3d
+sudo cp -rf dist/* /var/www/html/geospeedster/cossap3d
