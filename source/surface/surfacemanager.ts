@@ -1,4 +1,5 @@
 import { Surface } from "./surface";
+import { SurfaceLauncher } from "../workers/launcher/surfacelauncher";
 declare var Explorer3d;
 
 export class SurfaceManager extends THREE.EventDispatcher {
@@ -32,22 +33,36 @@ export class SurfaceManager extends THREE.EventDispatcher {
    }
 
    private loadHiRes(data) {
-      console.log("data");
       console.log(data);
 
       let aspectRatio = data.width / data.height;
+      let width, height, imageWidth, imageHeight;
+      if (aspectRatio > 1) {
+         imageWidth = this.options.hiResImageWidth;
+         imageHeight = Math.round(this.options.hiResImageWidth / aspectRatio);
+         width = this.options.hiResX;
+         height = Math.round(this.options.hiResX / aspectRatio)
+      } else {
+         imageWidth = Math.round(this.options.hiResImageWidth * aspectRatio)
+         imageHeight = this.options.hiResImageWidth;
+         height = this.options.hiResX;
+         width = Math.round(this.options.hiResX * aspectRatio)
+      }
 
       let options = Object.assign({},
          this.options,
          {
+            bbox: data.bbox,
+            template: this.options.template,
             loadImage: true,
-            resolutionX: this.options.hiResX,
-            resolutionY: Math.round(this.options.hiResX * aspectRatio),
-            imageWidth: this.options.hiResImageWidth,
-            imageHeight: Math.round(this.options.hiResImageWidth / aspectRatio)
+            resolutionX: width,
+            resolutionY: height,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight
          }
       );
-      this.hiResSurface = new Surface(options);
+      this.hiResSurface = new SurfaceLauncher(options);
+      // this.hiResSurface = new Surface(options);
       this.hiResSurface.addEventListener(Surface.TEXTURE_LOADED_EVENT, event => {
          let data = event.data;
          this.transitionToHiRes(data);
@@ -59,25 +74,14 @@ export class SurfaceManager extends THREE.EventDispatcher {
 
    private transitionToHiRes(data) {
       let loRes = this.surface.surface;
-      run();
-
-      function run() {
-         setTimeout(() => {
-            let opacity = loRes.material.opacity - 0.05;
-            console.log("Running loRes = " + opacity);
-            if (opacity < 0) {
-               loRes.visible = false;
-            } else {
-               loRes.material.opacity = opacity;
-               run();
-            }
-         }, 30);
-      }
+      let opacity = loRes.material.opacity;
+      console.log("Running loRes = " + opacity);
+      loRes.visible = false;
    }
 
    switchSurface(name) {
       let actor: Surface;
-      if (!this.hiResSurface) {
+      if (!this.hiResSurface || !this.hiResSurface.surface) {
          actor = this.surface;
       } else {
          if (name === "wireframe") {
