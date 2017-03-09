@@ -1,0 +1,18 @@
+#!/bin/bash
+# Grab the code
+git clone https://github.com/Tomella/cossap-3d.git
+# Create the deployment location
+sudo mkdir /var/www/html/geospeedster/cossap3d
+# cd to the base
+cd /home/ec2-user/cossap-3d
+# install dependencies
+bower install
+# Copy to http server
+sudo cp -rf dist/* /var/www/html/geospeedster/cossap3d/
+#########################################################
+#
+# That's me done as it is all static content and will run anywhwere
+# The directory above is an Apache httpd server virtual host
+# Do what is best or you
+#
+########################################################
