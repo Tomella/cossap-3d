@@ -1,8 +1,8 @@
+import { CossapCameraPositioner } from "./cossapcamerapositioner";
 import { Mappings } from "./mappings";
 import { Bind } from "../app/bind";
 import { SurfaceManager } from "../surface/surfacemanager";
 import { BoreholesManager } from "../boreholes/boreholesmanager";
-declare var Elevation;
 declare var Explorer3d;
 declare var proj4;
 
@@ -13,19 +13,30 @@ export class View {
    boreholes;
 
    constructor(public bbox: number[], public options: any) {
-      this.draw();
-      this.mappings = new Mappings(this.factory, Bind.dom);
 
-      this.mappings.addEventListener("material.changed", event => {
-         this.surface.switchSurface(event["name"]);
-      });
+      if (bbox) {
+         this.draw();
+         this.mappings = new Mappings(this.factory, Bind.dom);
+
+         this.mappings.addEventListener("material.changed", event => {
+            this.surface.switchSurface(event["name"]);
+         });
+      } else {
+         this.die();
+      }
+   }
+
+   die() {
+      Bind.dom.invalidParameter.classList.remove("hide");
    }
 
    draw() {
       let options = Object.assign({}, this.options.surface);
       let bbox = this.bbox;
       // Grab ourselves a world factory
-      let factory = this.factory = new Explorer3d.WorldFactory(this.options.target, this.options.worldView);
+      let viewOptions = this.options.worldView;
+      viewOptions.cameraPositioner = new CossapCameraPositioner();
+      let factory = this.factory = new Explorer3d.WorldFactory(this.options.target, viewOptions);
 
       let ll = proj4("EPSG:4326", "EPSG:3857", [bbox[0], bbox[1]]);
       let ur = proj4("EPSG:4326", "EPSG:3857", [bbox[2], bbox[3]]);
