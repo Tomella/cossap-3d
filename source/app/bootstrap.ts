@@ -4,8 +4,13 @@ import { Bind } from "./bind";
 import { DomBind } from "../bind/dombind";
 import { Config } from "./config";
 declare var proj4;
+declare var ES6Promise;
 
 let view = null;
+
+if (!Promise && !!ES6Promise) {
+   window["Promise"] = ES6Promise;
+}
 
 export function bootstrap() {
    let storage, bbox;
