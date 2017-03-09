@@ -3,20 +3,35 @@ import { View } from "../view/view";
 import { Bind } from "./bind";
 import { DomBind } from "../bind/dombind";
 import { Config } from "./config";
+declare var proj4;
 
 let view = null;
 
 export function bootstrap() {
-   let storage = new Storage();
+   let storage, bbox;
+   try {
+      storage = new Storage();
+      bbox = storage.bbox;
+
+      if (!bbox) {
+         die("Where is the valid bounding box?");
+      }
+   } catch(e) {
+      die("That's not a valid bounding box!");
+   }
 
    // let domBind = new DomBind(document.body);
-
-   drawView(storage.bbox);
+   proj4.defs("EPSG:4283", "+proj=longlat +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +no_defs");
+   drawView(bbox);
 
    storage.addEventListener(Storage.BBOX_EVENT, (evt) => {
       drawView(storage.bbox);
    });
 
+}
+
+function die(text: string) {
+   drawView(null);
 }
 
 function drawView(bbox) {
@@ -25,9 +40,7 @@ function drawView(bbox) {
       view = null;
    }
 
-   if (bbox) {
-      view = new View(bbox, createOptions());
-   }
+   view = new View(bbox, createOptions());
 }
 
 function createOptions() {

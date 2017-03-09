@@ -8,7 +8,7 @@ export class Bind {
       verticalExaggerationView: document.getElementById("verticalExaggerationValue"),
       surfaceOpacity: document.getElementById("surfaceOpacity"),
       showHideBoreholes: document.getElementById("showHideBoreholes"),
-      surfaceMaterialRadio: document.getElementsByName("surfaceMaterialRadio")
-
+      surfaceMaterialRadio: document.getElementsByName("surfaceMaterialRadio"),
+      invalidParameter: document.getElementById("invalidParameter")
    };
 }
