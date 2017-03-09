@@ -22,7 +22,7 @@ export class BoreholesManager {
          let bbox = this.options.bbox;
          data.filter(hole => hole.lon > bbox[0] && hole.lon <= bbox[2] && hole.lat > bbox[1] && hole.lat <= bbox[3])
          .forEach(hole => {
-            let coord = proj4("EPSG:4326", "EPSG:3857", [hole.lon, hole.lat]);
+            let coord = proj4("EPSG:4283", "EPSG:3857", [hole.lon, hole.lat]);
             let length = hole.length != null ? hole.length : 10;
             let elevation = hole.elevation < -90000 ? 0 : hole.elevation;
 
