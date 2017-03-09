@@ -760,6 +760,9 @@ var View = (function () {
 }());
 
 var view = null;
+if (!Promise && !!ES6Promise) {
+    window["Promise"] = ES6Promise;
+}
 function bootstrap() {
     var storage, bbox;
     try {
