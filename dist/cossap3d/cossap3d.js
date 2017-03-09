@@ -130,6 +130,28 @@ Storage.BBOX_KEY = "cossap3d.bbox";
 Storage.BBOX_EVENT = "bbox.change";
 Storage.STATE_KEY = "cossap3d.state";
 
+var CossapCameraPositioner = (function (_super) {
+    __extends(CossapCameraPositioner, _super);
+    function CossapCameraPositioner() {
+        return _super.call(this) || this;
+    }
+    CossapCameraPositioner.prototype.position = function (z, radius, center) {
+        return {
+            x: center.x,
+            y: center.y - 0.5 * radius,
+            z: center.z + 2 * radius
+        };
+    };
+    CossapCameraPositioner.prototype.up = function (z, radius, center) {
+        return {
+            x: 0,
+            y: 0,
+            z: 1
+        };
+    };
+    return CossapCameraPositioner;
+}(Explorer3d.CameraPositioner));
+
 var Mappings = (function (_super) {
     __extends(Mappings, _super);
     function Mappings(factory, dom) {
@@ -231,7 +253,8 @@ Bind.dom = {
     verticalExaggerationView: document.getElementById("verticalExaggerationValue"),
     surfaceOpacity: document.getElementById("surfaceOpacity"),
     showHideBoreholes: document.getElementById("showHideBoreholes"),
-    surfaceMaterialRadio: document.getElementsByName("surfaceMaterialRadio")
+    surfaceMaterialRadio: document.getElementsByName("surfaceMaterialRadio"),
+    invalidParameter: document.getElementById("invalidParameter")
 };
 
 var Surface = (function (_super) {
@@ -315,6 +338,229 @@ function seconds$1() {
     return (Date.now() % 100000) / 1000;
 }
 
+var Config = (function () {
+    function Config() {
+    }
+    return Config;
+}());
+Config.preferences = {
+    surfaceWorkerLocation: "workers/target/broker.js",
+    showGrid: true,
+    showBoreholes: true,
+    scaling: 1,
+    surface: {
+        type: "esriElevation",
+        header: {
+            name: "Imagery over Victoria",
+        },
+        template: "http://services.ga.gov.au/site_9/services/DEM_SRTM_1Second_over_Bathymetry_Topography/MapServer/WCSServer?SERVICE=WCS&VERSION=1.0.0&REQUEST=GetCoverage" +
+            "&coverage=1&CRS=EPSG:3857&BBOX=${bbox}&FORMAT=GeoTIFF&RESX=${resx}&RESY=${resy}&RESPONSE_CRS=EPSG:3857&HEIGHT=${height}&WIDTH=${width}",
+        esriTemplate: "http://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&f=${format}&format=jpg&size=${size}",
+        topoTemplate: "http://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/export?bbox=${bbox}&f=image&format=jpg&size=${width},${height}",
+        resolutionX: 75,
+        imageWidth: 256,
+        hiResX: 700,
+        hiResImageWidth: 2048,
+        hiResTopoWidth: 512,
+        opacity: 1,
+        extent: new Elevation.Extent2d(1000000, -10000000, 20000000, -899000),
+    },
+    boreholes: {
+        template: "http://dev.cossap.gadevs.ga/explorer-cossap-services/service/boreholes/features/${bbox}"
+    },
+    worldView: {
+        axisHelper: {
+            on: true,
+            labels: {
+                x: "",
+                y: " North ",
+                z: ""
+            }
+        }
+    }
+};
+
+var SurfaceLauncher = (function (_super) {
+    __extends(SurfaceLauncher, _super);
+    function SurfaceLauncher(options) {
+        var _this = _super.call(this, options) || this;
+        _this.materials = {};
+        _this.materialComplete = false;
+        return _this;
+    }
+    SurfaceLauncher.prototype.since = function () {
+        return Date.now() - this.startMilli;
+    };
+    SurfaceLauncher.prototype.parse = function () {
+        var _this = this;
+        this.startMilli = Date.now();
+        var worker = new Worker(Config.preferences.surfaceWorkerLocation);
+        var geometry, material;
+        var width = this.options.hiResTopoWidth ? this.options.hiResTopoWidth : 512;
+        var height = Math.floor(width * this.options.resolutionY / this.options.resolutionX);
+        var extent = this.options.extent;
+        var options = {
+            type: "surface",
+            extentBbox: this.options.extent.toBbox(),
+            bbox: this.options.bbox,
+            template: this.options.template,
+            resolutionX: this.options.resolutionX,
+            resolutionY: this.options.resolutionY,
+            width: width,
+            height: height
+        };
+        worker.addEventListener('message', function (message) {
+            var data = message.data;
+            if (data.type === "xyz.loaded") {
+                _this.createGeometry(options, data.data).then(function (geom) {
+                    _this.geometry = geom;
+                    _this.checkComplete();
+                });
+                
+            }
+            else if (data.type === "color.loaded") {
+                _this.createHeatmapMaterial(options, data.data);
+            }
+        });
+        worker.postMessage(options);
+        this.createImageMaterial();
+        this.fetchTopoMaterial(options);
+    };
+    SurfaceLauncher.prototype.checkComplete = function () {
+        if (this.materialComplete && this.geometry) {
+            this.createMesh();
+            this.dispatchEvent({
+                type: Explorer3d.WcsEsriImageryParser.TEXTURE_LOADED_EVENT,
+                data: this.surface
+            });
+        }
+    };
+    SurfaceLauncher.prototype.createImageMaterial = function () {
+        var _this = this;
+        console.log("createImageMaterial start: " + this.since());
+        var url = this.options.esriTemplate
+            .replace("${bbox}", this.options.bbox)
+            .replace("${format}", "Image")
+            .replace("${size}", this.options.imageWidth + "," + this.options.imageHeight);
+        var loader = new THREE.TextureLoader();
+        loader.crossOrigin = "";
+        var opacity = this.options.opacity ? this.options.opacity : 1;
+        var material = new THREE.MeshPhongMaterial({
+            map: loader.load(url, function (event) {
+                _this.materialComplete = true;
+                _this.checkComplete();
+            }),
+            transparent: true,
+            opacity: opacity,
+            side: THREE.DoubleSide
+        });
+        this.materials.image = material;
+        console.log("createImageMaterial end: " + this.since());
+    };
+    SurfaceLauncher.prototype.createHeatmapMaterial = function (options, res) {
+        console.log("createHeatmapMaterial start: " + this.since());
+        var self = this;
+        var mask = document.createElement("canvas");
+        mask.width = options.resolutionX;
+        mask.height = options.resolutionY;
+        var context = mask.getContext("2d");
+        var id = context.createImageData(1, 1);
+        var d = id.data;
+        var count = 0;
+        fillColor();
+        function fillColor() {
+            setTimeout(function () {
+                if (count >= res.length) {
+                    complete();
+                    return;
+                }
+                do {
+                    var item = res[count++];
+                    if (count > res.length) {
+                        break;
+                    }
+                    drawPixel(item);
+                } while (count % 1000);
+                fillColor();
+            }, 5);
+        }
+        function complete() {
+            var texture = new THREE.Texture(mask);
+            texture.needsUpdate = true;
+            var opacity = options.opacity ? options.opacity : 1;
+            var material = new THREE.MeshPhongMaterial({
+                map: texture,
+                transparent: true,
+                opacity: opacity,
+                side: THREE.DoubleSide
+            });
+            self.materials.heatmap = material;
+            console.log("createHeatmapMaterial end: " + self.since());
+        }
+        function drawPixel(item) {
+            d[0] = item.r;
+            d[1] = item.g;
+            d[2] = item.b;
+            d[3] = item.a;
+            context.putImageData(id, item.x, item.y);
+        }
+    };
+    SurfaceLauncher.prototype.createMesh = function () {
+        this.surface = new THREE.Mesh(this.geometry, this.materials.image);
+    };
+    SurfaceLauncher.prototype.createGeometry = function (options, res) {
+        var self = this;
+        console.log("createGeometry start: " + this.since());
+        var resolutionX = this.options.resolutionX;
+        var resolutionY = res.length / resolutionX;
+        var geometry = new THREE.PlaneGeometry(resolutionX, resolutionY, resolutionX - 1, resolutionY - 1);
+        var bbox = this.options.bbox;
+        return new Promise(function (resolve, reject) {
+            var count = 0;
+            if (res.length) {
+                processBlock();
+            }
+            else {
+                reject("No data");
+            }
+            function processBlock() {
+                setTimeout(function () {
+                    if (count >= res.length) {
+                        cleanUp();
+                        return;
+                    }
+                    do {
+                        var vertice = geometry.vertices[count];
+                        var xyz = res[count++];
+                        if (count > res.length) {
+                            break;
+                        }
+                        vertice.z = xyz.z;
+                        vertice.x = xyz.x;
+                        vertice.y = xyz.y;
+                    } while (count % 1000);
+                    processBlock();
+                }, 5);
+                function cleanUp() {
+                    geometry.computeBoundingSphere();
+                    geometry.computeFaceNormals();
+                    geometry.computeVertexNormals();
+                    resolve(geometry);
+                    console.log("createGeometry end: " + self.since());
+                }
+            }
+        });
+    };
+    SurfaceLauncher.prototype.switchSurface = function (name) {
+        var opacity = this.surface.material.opacity;
+        this.surface.visible = true;
+        this.surface.material = this.materials[name];
+        this.surface.material.opacity = opacity;
+        this.surface.material.needsUpdate = true;
+    };
+    return SurfaceLauncher;
+}(Surface));
+
 var SurfaceManager = (function (_super) {
     __extends(SurfaceManager, _super);
     function SurfaceManager(options) {
@@ -341,17 +587,32 @@ var SurfaceManager = (function (_super) {
     };
     SurfaceManager.prototype.loadHiRes = function (data) {
         var _this = this;
-        console.log("data");
         console.log(data);
         var aspectRatio = data.width / data.height;
+        var width, height, imageWidth, imageHeight;
+        if (aspectRatio > 1) {
+            imageWidth = this.options.hiResImageWidth;
+            imageHeight = Math.round(this.options.hiResImageWidth / aspectRatio);
+            width = this.options.hiResX;
+            height = Math.round(this.options.hiResX / aspectRatio);
+        }
+        else {
+            imageWidth = Math.round(this.options.hiResImageWidth * aspectRatio);
+            imageHeight = this.options.hiResImageWidth;
+            height = this.options.hiResX;
+            width = Math.round(this.options.hiResX * aspectRatio);
+        }
         var options = Object.assign({}, this.options, {
+            bbox: data.bbox,
+            template: this.options.template,
             loadImage: true,
-            resolutionX: this.options.hiResX,
-            resolutionY: Math.round(this.options.hiResX * aspectRatio),
-            imageWidth: this.options.hiResImageWidth,
-            imageHeight: Math.round(this.options.hiResImageWidth / aspectRatio)
+            resolutionX: width,
+            resolutionY: height,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight
         });
-        this.hiResSurface = new Surface(options);
+        this.hiResSurface = new SurfaceLauncher(options);
+        // this.hiResSurface = new Surface(options);
         this.hiResSurface.addEventListener(Surface.TEXTURE_LOADED_EVENT, function (event) {
             var data = event.data;
             _this.transitionToHiRes(data);
@@ -361,24 +622,13 @@ var SurfaceManager = (function (_super) {
     };
     SurfaceManager.prototype.transitionToHiRes = function (data) {
         var loRes = this.surface.surface;
-        run();
-        function run() {
-            setTimeout(function () {
-                var opacity = loRes.material.opacity - 0.05;
-                console.log("Running loRes = " + opacity);
-                if (opacity < 0) {
-                    loRes.visible = false;
-                }
-                else {
-                    loRes.material.opacity = opacity;
-                    run();
-                }
-            }, 30);
-        }
+        var opacity = loRes.material.opacity;
+        console.log("Running loRes = " + opacity);
+        loRes.visible = false;
     };
     SurfaceManager.prototype.switchSurface = function (name) {
         var actor;
-        if (!this.hiResSurface) {
+        if (!this.hiResSurface || !this.hiResSurface.surface) {
             actor = this.surface;
         }
         else {
@@ -430,7 +680,7 @@ var BoreholesManager = (function () {
             var bbox = _this.options.bbox;
             data.filter(function (hole) { return hole.lon > bbox[0] && hole.lon <= bbox[2] && hole.lat > bbox[1] && hole.lat <= bbox[3]; })
                 .forEach(function (hole) {
-                var coord = proj4("EPSG:4326", "EPSG:3857", [hole.lon, hole.lat]);
+                var coord = proj4("EPSG:4283", "EPSG:3857", [hole.lon, hole.lat]);
                 var length = hole.length != null ? hole.length : 10;
                 var elevation = hole.elevation < -90000 ? 0 : hole.elevation;
                 lineGeom.vertices.push(new THREE.Vector3(coord[0], coord[1], elevation));
@@ -450,18 +700,28 @@ var View = (function () {
         var _this = this;
         this.bbox = bbox;
         this.options = options;
-        this.draw();
-        this.mappings = new Mappings(this.factory, Bind.dom);
-        this.mappings.addEventListener("material.changed", function (event) {
-            _this.surface.switchSurface(event["name"]);
-        });
+        if (bbox) {
+            this.draw();
+            this.mappings = new Mappings(this.factory, Bind.dom);
+            this.mappings.addEventListener("material.changed", function (event) {
+                _this.surface.switchSurface(event["name"]);
+            });
+        }
+        else {
+            this.die();
+        }
     }
+    View.prototype.die = function () {
+        Bind.dom.invalidParameter.classList.remove("hide");
+    };
     View.prototype.draw = function () {
         var _this = this;
         var options = Object.assign({}, this.options.surface);
         var bbox = this.bbox;
         // Grab ourselves a world factory
-        var factory = this.factory = new Explorer3d.WorldFactory(this.options.target, this.options.worldView);
+        var viewOptions = this.options.worldView;
+        viewOptions.cameraPositioner = new CossapCameraPositioner();
+        var factory = this.factory = new Explorer3d.WorldFactory(this.options.target, viewOptions);
         var ll = proj4("EPSG:4326", "EPSG:3857", [bbox[0], bbox[1]]);
         var ur = proj4("EPSG:4326", "EPSG:3857", [bbox[2], bbox[3]]);
         options.bbox = ll;
@@ -499,63 +759,35 @@ var View = (function () {
     return View;
 }());
 
-var Config = (function () {
-    function Config() {
-    }
-    return Config;
-}());
-Config.preferences = {
-    showGrid: true,
-    showBoreholes: true,
-    scaling: 1,
-    surface: {
-        type: "esriElevation",
-        header: {
-            name: "Imagery over Victoria",
-        },
-        template: "http://services.ga.gov.au/site_9/services/DEM_SRTM_1Second_over_Bathymetry_Topography/MapServer/WCSServer?SERVICE=WCS&VERSION=1.0.0&REQUEST=GetCoverage" +
-            "&coverage=1&CRS=EPSG:3857&BBOX=${bbox}&FORMAT=GeoTIFF&RESX=${resx}&RESY=${resy}&RESPONSE_CRS=EPSG:3857&HEIGHT=${height}&WIDTH=${width}",
-        esriTemplate: "http://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&f=${format}&format=jpg&size=${size}",
-        topoTemplate: "http://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/export?bbox=${bbox}&f=image&format=jpg&size=${width},${height}",
-        resolutionX: 60,
-        imageWidth: 256,
-        hiResX: 400,
-        hiResImageWidth: 2048,
-        opacity: 1,
-        extent: new Elevation.Extent2d(1000000, -10000000, 20000000, -899000),
-    },
-    boreholes: {
-        template: "http://dev.cossap.gadevs.ga/explorer-cossap-services/service/boreholes/features/${bbox}"
-    },
-    worldView: {
-        axisHelper: {
-            on: true,
-            labels: {
-                x: "",
-                y: " North ",
-                z: ""
-            }
-        }
-    }
-};
-
 var view = null;
 function bootstrap() {
-    var storage = new Storage();
+    var storage, bbox;
+    try {
+        storage = new Storage();
+        bbox = storage.bbox;
+        if (!bbox) {
+            die("Where is the valid bounding box?");
+        }
+    }
+    catch (e) {
+        die("That's not a valid bounding box!");
+    }
     // let domBind = new DomBind(document.body);
-    drawView(storage.bbox);
+    proj4.defs("EPSG:4283", "+proj=longlat +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +no_defs");
+    drawView(bbox);
     storage.addEventListener(Storage.BBOX_EVENT, function (evt) {
         drawView(storage.bbox);
     });
+}
+function die(text) {
+    drawView(null);
 }
 function drawView(bbox) {
     if (view) {
         view.destroy();
         view = null;
     }
-    if (bbox) {
-        view = new View(bbox, createOptions());
-    }
+    view = new View(bbox, createOptions());
 }
 function createOptions() {
     return Object.assign(Config.preferences, {

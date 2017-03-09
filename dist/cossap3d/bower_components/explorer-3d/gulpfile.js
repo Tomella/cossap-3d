@@ -19,17 +19,20 @@ var uglify           = require('gulp-uglify');
 var ASSETS_BASE = "dist";
 var RESOURCES_BASE = 'dist/resources';
 
+// I'm too stupid to work out how to generate a single index.d.ts so I just join
+// up all the definitions and manually edit the duplicates and chuck a namespace around them.
 gulp.task('definitions', ['buildDefinitions'], function() {
    return gulp.src('./dist/definitions/**/*.ts')
     .pipe(concat('index.d.ts'))
     .pipe(gulp.dest('./dist/'));
 });
-
 gulp.task('buildDefinitions', function() {
     var tsResult = gulp.src('source/**/*.ts')
         .pipe(gulpTs({
          "target": "es6",
-         "declaration": true
+         "declaration": true,
+         module: "system",
+         "outFile": "index.d.ts"
     }));
 
     return tsResult.dts.pipe(gulp.dest('dist/definitions'));

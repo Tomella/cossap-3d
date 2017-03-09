@@ -251,7 +251,7 @@ var Extent2d = (function () {
         configurable: true
     });
     Extent2d.prototype.set = function (extent) {
-        this._extent = [extent.lngMin, extent.latMin, extent.lngMax, extent.latMin];
+        this._extent = [extent.lngMin, extent.latMin, extent.lngMax, extent.latMax];
         return this;
     };
     Extent2d.prototype.setFromPoints = function (points) {
