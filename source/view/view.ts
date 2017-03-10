@@ -1,6 +1,7 @@
 import { CossapCameraPositioner } from "./cossapcamerapositioner";
 import { Mappings } from "./mappings";
 import { Bind } from "../app/bind";
+import { SurfaceEvent } from "../surface/surfaceevent";
 import { SurfaceManager } from "../surface/surfacemanager";
 import { BoreholesManager } from "../boreholes/boreholesmanager";
 declare var Explorer3d;
@@ -17,10 +18,6 @@ export class View {
       if (bbox) {
          this.draw();
          this.mappings = new Mappings(this.factory, Bind.dom);
-
-         this.mappings.addEventListener("material.changed", event => {
-            this.surface.switchSurface(event["name"]);
-         });
       } else {
          this.die();
       }
@@ -47,20 +44,17 @@ export class View {
       options.imageHeight = Math.round(options.imageWidth * (options.bbox[3] - options.bbox[1]) / (options.bbox[2] - options.bbox[0]));
 
       this.surface = new SurfaceManager(options);
-      this.surface.addEventListener(SurfaceManager.HIRES_LOADED, event => {
+      this.surface.addEventListener(SurfaceEvent.SURFACE_LOADED, event => {
          let surface = event.data;
-         this.mappings.surface = surface;
          this.factory.extend(surface, false);
       });
 
-      this.surface.addEventListener(SurfaceManager.SURFACE_CHANGED, event => {
-         let surface = event.data;
-         this.mappings.surface = surface;
+      this.surface.addEventListener(SurfaceEvent.MATERIAL_LOADED, event => {
+         this.mappings.addMaterial(event.data);
       });
 
-      this.surface.parse().then(surface => {
-         this.mappings.surface = surface;
 
+      this.surface.parse().then(surface => {
          this.boreholes = new BoreholesManager(Object.assign({bbox}, this.options.boreholes));
          this.boreholes.parse().then(data => {
             if (data) {

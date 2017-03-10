@@ -1,10 +1,11 @@
+import { WorkerEvent } from "../workerevent";
+
 export class SurfaceWorker extends THREE.EventDispatcher {
-   static XYZ_LOADED = "xyz.loaded";
-   static COLOR_LOADED = "color.loaded";
    static DEFAULT_MAX_DEPTH = 5000;
    static DEFAULT_MAX_ELEVATION = 2200;
+   static BLOCK_SIZE = 800;
 
-   constructor(public options: any) {
+   constructor(public options: {any, blocks?: number, resolutionX: number, resolutionY: number, maxDepth?: number, maxElevation?: number}) {
       super();
    }
 
@@ -14,21 +15,12 @@ export class SurfaceWorker extends THREE.EventDispatcher {
 
       return restLoader.load().then(res => {
          console.log("Loaded surface worker xyz");
-         this.dispatchEvent({
-            type: SurfaceWorker.XYZ_LOADED,
-            data: res
-         });
-
-         this.dispatchEvent({
-            type: SurfaceWorker.COLOR_LOADED,
-            data: this.createColors(res)
-         });
-
+         this.createBlocks(res);
          return null;
       });
    }
 
-   createColors(res) {
+   createBlocks(res) {
       let resolutionX = this.options.resolutionX;
       let resolutionY = this.options.resolutionY;
 
@@ -44,10 +36,26 @@ export class SurfaceWorker extends THREE.EventDispatcher {
 
       let index = 0;
       let count = 0;
+      let length = res.length;
+      let buffer = [];
+      let block = [];
 
+      res.forEach( (item, i) => {
+         if (buffer.length === SurfaceWorker.BLOCK_SIZE) {
+            this.dispatchEvent({
+               type: WorkerEvent.XYZ_BLOCK,
+               data: block
+            });
+            this.dispatchEvent({
+               type: WorkerEvent.COLOR_BLOCK,
+               data: buffer
+            });
+            block = [];
+            buffer = [];
+         }
 
+         block.push(item);
 
-      return res.map((item, i) => {
          let color, z = item.z;
 
          if (z > 0) {
@@ -55,14 +63,32 @@ export class SurfaceWorker extends THREE.EventDispatcher {
          } else {
             color = blue.getColor(z);
          }
-         return {
+         buffer.push({
             x: i % resolutionX,
             y: Math.floor(i / resolutionX),
             r: color.r * 255,
             g: color.g * 255,
             b: color.b * 255,
             a: 255
-         };
+         });
+      });
+
+      if (buffer.length) {
+         this.dispatchEvent({
+            type: WorkerEvent.XYZ_BLOCK,
+            data: block
+         });
+         this.dispatchEvent({
+            type: WorkerEvent.COLOR_BLOCK,
+            data: buffer
+         });
+      }
+
+      this.dispatchEvent({
+         type: WorkerEvent.XYZ_LOADED
+      });
+      this.dispatchEvent({
+         type: WorkerEvent.COLOR_LOADED
       });
    }
 }

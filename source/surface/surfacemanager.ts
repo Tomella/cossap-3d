@@ -1,10 +1,9 @@
 import { Surface } from "./surface";
 import { SurfaceLauncher } from "../workers/launcher/surfacelauncher";
+import { SurfaceEvent } from "./surfaceevent";
 declare var Explorer3d;
 
 export class SurfaceManager extends THREE.EventDispatcher {
-   static HIRES_LOADED = "surfacemanager.hires.loaded";
-   static SURFACE_CHANGED = "surfacemanager.surface.changed";
    surface: Surface;
    hiResSurface: Surface;
    bbox: number[];
@@ -19,9 +18,13 @@ export class SurfaceManager extends THREE.EventDispatcher {
       this.surface = new Surface(this.options);
       console.log("options1");
       console.log(this.options);
-      this.surface.addEventListener(Surface.META_DATA_LOADED, event => {
+      this.surface.addEventListener(Explorer3d.WcsEsriImageryParser.BBOX_CHANGED_EVENT, event => {
          this.dispatchEvent(event);
-         this.loadHiRes(event.data);
+         setTimeout(() => this.loadHiRes(event.data), 500);
+      });
+
+      this.surface.addEventListener(SurfaceEvent.MATERIAL_LOADED, event => {
+         this.dispatchEvent(event);
       });
 
       return this.surface.parse().then(data => {
@@ -41,12 +44,12 @@ export class SurfaceManager extends THREE.EventDispatcher {
          imageWidth = this.options.hiResImageWidth;
          imageHeight = Math.round(this.options.hiResImageWidth / aspectRatio);
          width = this.options.hiResX;
-         height = Math.round(this.options.hiResX / aspectRatio)
+         height = Math.round(this.options.hiResX / aspectRatio);
       } else {
-         imageWidth = Math.round(this.options.hiResImageWidth * aspectRatio)
+         imageWidth = Math.round(this.options.hiResImageWidth * aspectRatio);
          imageHeight = this.options.hiResImageWidth;
          height = this.options.hiResX;
-         width = Math.round(this.options.hiResX * aspectRatio)
+         width = Math.round(this.options.hiResX * aspectRatio);
       }
 
       let options = Object.assign({},
@@ -63,38 +66,18 @@ export class SurfaceManager extends THREE.EventDispatcher {
       );
       this.hiResSurface = new SurfaceLauncher(options);
       // this.hiResSurface = new Surface(options);
-      this.hiResSurface.addEventListener(Surface.TEXTURE_LOADED_EVENT, event => {
-         let data = event.data;
-         this.transitionToHiRes(data);
-         this.dispatchEvent({type: SurfaceManager.HIRES_LOADED, data});
+      this.hiResSurface.addEventListener(SurfaceEvent.MATERIAL_LOADED, event => {
+         // Set the priority higher than lo-res
+         event.data.priority = 1;
+         this.dispatchEvent(event);
+      });
+
+      // this.hiResSurface = new Surface(options);
+      this.hiResSurface.addEventListener(SurfaceEvent.SURFACE_LOADED, event => {
+         this.dispatchEvent(event);
       });
 
       this.hiResSurface.parse();
-   }
-
-   private transitionToHiRes(data) {
-      let loRes = this.surface.surface;
-      let opacity = loRes.material.opacity;
-      console.log("Running loRes = " + opacity);
-      loRes.visible = false;
-   }
-
-   switchSurface(name) {
-      let actor: Surface;
-      if (!this.hiResSurface || !this.hiResSurface.surface) {
-         actor = this.surface;
-      } else {
-         if (name === "wireframe") {
-            actor = this.surface;
-            this.hiResSurface.surface.visible = false;
-         } else {
-            actor = this.hiResSurface;
-            this.surface.surface.visible = false;
-         }
-         this.dispatchEvent({ type: SurfaceManager.SURFACE_CHANGED, data: actor.surface});
-      }
-      actor.switchSurface(name);
-      return actor;
    }
 }
 

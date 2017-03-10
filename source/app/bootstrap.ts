@@ -6,6 +6,11 @@ import { Config } from "./config";
 declare var proj4;
 declare var ES6Promise;
 
+/**
+ * The bootstrap function starts the application.
+ */
+
+
 let view = null;
 
 if (!Promise && !!ES6Promise) {
@@ -21,7 +26,7 @@ export function bootstrap() {
       if (!bbox) {
          die("Where is the valid bounding box?");
       }
-   } catch(e) {
+   } catch (e) {
       die("That's not a valid bounding box!");
    }
 

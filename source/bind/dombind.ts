@@ -1,5 +1,8 @@
 import { Mapper } from "../utils/mapper";
 
+/**
+ * To be developed into an auto binder, to populate the Dom object programmatically.
+ */
 export class DomBind {
    private mapper;
 

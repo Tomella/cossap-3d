@@ -1,12 +1,19 @@
+import { SurfaceSwitch } from "../surface/surfaceswitch";
 declare var Explorer3d;
 
-export class Mappings extends THREE.EventDispatcher {
-   private _surface;
+/**
+ * This is the bridge between the UI and the model
+ */
+export class Mappings {
+   private _materials: any;
+   private _radioMap: any;
    private _boreholes;
-   private _surfaceMaterialSelect;
+   private _surfaceMaterialSelect = "image";
+
 
    constructor(public factory, public dom) {
-      super();
+      this._materials = {};
+      this._radioMap = {};
       this.mapVerticalExagerate();
       this.mapSurfaceOpacity();
       this.mapShowHideBoreholes();
@@ -29,20 +36,10 @@ export class Mappings extends THREE.EventDispatcher {
       });
    }
 
-   set surface(surface) {
-      let opacity = this.dom.surfaceOpacity.value;
-      console.log("Setting opacity to " + opacity);
-      this._surface = surface;
-      if (surface) surface.material.opacity = opacity;
-   }
-
    mapSurfaceOpacity() {
       let element = this.dom.surfaceOpacity;
       element.addEventListener("change", () => {
-         if (this._surface) {
-            this._surface.material.opacity = this.dom.surfaceOpacity.value;
-         }
-         this.dom.surfaceOpacity.blur();
+         this._materials[this._surfaceMaterialSelect].on(+element.value);
       });
    }
 
@@ -51,31 +48,54 @@ export class Mappings extends THREE.EventDispatcher {
       if (boreholes) boreholes.visible = this.dom.showHideBoreholes.checked;
    }
 
-   set material(mat) {
-      this.dom.surfaceMaterialSelect.value = mat;
+   addMaterial(detail: SurfaceSwitch) {
+      let name = detail.name;
+      let material = this._materials[name];
+      let keys = Object.keys(this._materials);
+
+      if (!material || detail.priority > material.priority) {
+         Object.keys(this._materials).forEach(key => {
+            this._materials[key].off();
+         });
+         this._materials[name] = detail;
+         this._radioMap[name].disabled = false;
+      }
+
+      if (this._materials[this._surfaceMaterialSelect]) {
+         this._materials[this._surfaceMaterialSelect].on(+this.dom.surfaceOpacity.value);
+      }
    }
 
-   get material() {
-      return this.dom.surfaceMaterialSelect.value;
+   hasMaterial(name: string) {
+      return !!this._materials[name];
    }
 
    mapSurfaceMaterialRadio() {
-      let elements = Array.from<Element>(this.dom.surfaceMaterialRadio);
-      let self = this;
+      let elements = Array.from<HTMLInputElement>(this.dom.surfaceMaterialRadio);
 
       elements.forEach(element => {
-         element.addEventListener("change", eventHandler);
+         element.addEventListener("change", event => {
+            let name = event.target.value;
+            this._surfaceMaterialSelect = name;
+            let details = this._materials[name];
+            let opacity = +this.dom.surfaceOpacity.value;
+            Object.keys(this._materials).forEach(key => {
+               this._materials[key].off();
+            });
+            details.on(opacity);
+         });
+
+         this._radioMap[(<HTMLInputElement> element).value] = element;
       });
-      function eventHandler(event) {
-         self.dispatchEvent({type: "material.changed", name: event.target.value});
-      };
    }
 
    mapShowHideBoreholes() {
       let element = this.dom.showHideBoreholes;
 
       element.addEventListener("change", () => {
-         if (this._boreholes) this._boreholes.visible = this.dom.showHideBoreholes.checked;
+         if (this._boreholes) {
+            this._boreholes.visible = this.dom.showHideBoreholes.checked;
+         };
       });
    }
 }

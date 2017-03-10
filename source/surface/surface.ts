@@ -1,8 +1,8 @@
 declare var Explorer3d;
+import { SurfaceEvent } from "./surfaceevent";
+import { SurfaceSwitch } from "./surfaceswitch";
 
 export class Surface extends THREE.EventDispatcher {
-   static META_DATA_LOADED = Explorer3d.WcsEsriImageryParser.BBOX_CHANGED_EVENT;
-   static TEXTURE_LOADED_EVENT = Explorer3d.WcsEsriImageryParser.TEXTURE_LOADED_EVENT;
    materials: any = {};
    surface;
    bbox: number[];
@@ -21,7 +21,6 @@ export class Surface extends THREE.EventDispatcher {
          let data = event.data;
          this.bbox = data.bbox;
          this.aspectRatio = data.aspectRatio;
-         this.fetchTopoMaterial(data);
       });
 
       parser.addEventListener(Explorer3d.WcsEsriImageryParser.TEXTURE_LOADED_EVENT, event => {
@@ -42,17 +41,6 @@ export class Surface extends THREE.EventDispatcher {
       });
    }
 
-   fetchTopoMaterial(data) {
-      this.materials.topo = new Explorer3d.WmsMaterial({
-         template: this.options.topoTemplate,
-         width: data.width,
-         height: data.height, // Yeah, I know it is the same
-         transparent: true,
-         bbox: data.bbox,
-         opacity: 0.7
-      });
-   }
-
    fetchWireframeMaterial() {
       this.materials.wireframe = new THREE.MeshBasicMaterial({
          color: 0xeeeeee,
@@ -60,24 +48,21 @@ export class Surface extends THREE.EventDispatcher {
          opacity: 0.7,
          wireframe: true
       });
+      this.dispatchEvent({type: SurfaceEvent.MATERIAL_LOADED, data: new SurfaceSwitch("wireframe", this, this.materials.wireframe)});
    }
 
    fetchMaterials() {
       let points = this.surface.geometry.vertices;
       let resolutionX = this.options.resolutionX;
       this.materials.image = this.surface.material;
-      this.materials.heatmap = new Explorer3d.ElevationMaterial({
-         resolutionX: resolutionX,
-         resolutionY: points.length / resolutionX,
-         data: points,
-         transparent: true,
-         opacity: 1,
-         side: THREE.DoubleSide
-      });
+      this.dispatchEvent({type: SurfaceEvent.MATERIAL_LOADED, data: new SurfaceSwitch("image", this, this.materials.image)});
    }
 
-   switchSurface(name) {
-      let opacity = this.surface.material.opacity;
+   set visible(on) {
+      this.surface.visible = on;
+   }
+
+   switchSurface(name: string, opacity: number) {
       this.surface.visible = true;
       this.surface.material = this.materials[name];
       this.surface.material.opacity = opacity;

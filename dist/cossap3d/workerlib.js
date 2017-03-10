@@ -10,6 +10,16 @@ function __extends(d, b) {
     d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
 }
 
+var WorkerEvent = (function () {
+    function WorkerEvent() {
+    }
+    return WorkerEvent;
+}());
+WorkerEvent.XYZ_LOADED = "xyz.loaded";
+WorkerEvent.XYZ_BLOCK = "xyz.block";
+WorkerEvent.COLOR_LOADED = "color.loaded";
+WorkerEvent.COLOR_BLOCK = "color.block";
+
 var SurfaceWorker = (function (_super) {
     __extends(SurfaceWorker, _super);
     function SurfaceWorker(options) {
@@ -23,18 +33,12 @@ var SurfaceWorker = (function (_super) {
         console.log("Running surface worker");
         return restLoader.load().then(function (res) {
             console.log("Loaded surface worker xyz");
-            _this.dispatchEvent({
-                type: SurfaceWorker.XYZ_LOADED,
-                data: res
-            });
-            _this.dispatchEvent({
-                type: SurfaceWorker.COLOR_LOADED,
-                data: _this.createColors(res)
-            });
+            _this.createBlocks(res);
             return null;
         });
     };
-    SurfaceWorker.prototype.createColors = function (res) {
+    SurfaceWorker.prototype.createBlocks = function (res) {
+        var _this = this;
         var resolutionX = this.options.resolutionX;
         var resolutionY = this.options.resolutionY;
         // TODO: Some magic numbers. I need think about them. I think the gradient should stay the same.
@@ -48,7 +52,23 @@ var SurfaceWorker = (function (_super) {
         lut.setMin(0);
         var index = 0;
         var count = 0;
-        return res.map(function (item, i) {
+        var length = res.length;
+        var buffer = [];
+        var block = [];
+        res.forEach(function (item, i) {
+            if (buffer.length === SurfaceWorker.BLOCK_SIZE) {
+                _this.dispatchEvent({
+                    type: WorkerEvent.XYZ_BLOCK,
+                    data: block
+                });
+                _this.dispatchEvent({
+                    type: WorkerEvent.COLOR_BLOCK,
+                    data: buffer
+                });
+                block = [];
+                buffer = [];
+            }
+            block.push(item);
             var color, z = item.z;
             if (z > 0) {
                 color = lut.getColor(z);
@@ -56,23 +76,41 @@ var SurfaceWorker = (function (_super) {
             else {
                 color = blue.getColor(z);
             }
-            return {
+            buffer.push({
                 x: i % resolutionX,
                 y: Math.floor(i / resolutionX),
                 r: color.r * 255,
                 g: color.g * 255,
                 b: color.b * 255,
                 a: 255
-            };
+            });
+        });
+        if (buffer.length) {
+            this.dispatchEvent({
+                type: WorkerEvent.XYZ_BLOCK,
+                data: block
+            });
+            this.dispatchEvent({
+                type: WorkerEvent.COLOR_BLOCK,
+                data: buffer
+            });
+        }
+        this.dispatchEvent({
+            type: WorkerEvent.XYZ_LOADED
+        });
+        this.dispatchEvent({
+            type: WorkerEvent.COLOR_LOADED
         });
     };
     return SurfaceWorker;
 }(THREE.EventDispatcher));
-SurfaceWorker.XYZ_LOADED = "xyz.loaded";
-SurfaceWorker.COLOR_LOADED = "color.loaded";
 SurfaceWorker.DEFAULT_MAX_DEPTH = 5000;
 SurfaceWorker.DEFAULT_MAX_ELEVATION = 2200;
+SurfaceWorker.BLOCK_SIZE = 800;
 
+/**
+ * Javascript container for all things to do with configuration.
+ */
 var Config = (function () {
     function Config() {
     }
@@ -95,13 +133,21 @@ Config.preferences = {
         resolutionX: 75,
         imageWidth: 256,
         hiResX: 700,
-        hiResImageWidth: 2048,
+        hiResImageWidth: 3000,
         hiResTopoWidth: 512,
         opacity: 1,
         extent: new Elevation.Extent2d(1000000, -10000000, 20000000, -899000),
     },
     boreholes: {
         template: "http://dev.cossap.gadevs.ga/explorer-cossap-services/service/boreholes/features/${bbox}"
+    },
+    rocks: {
+        dataUrl: "http://www.ga.gov.au/geophysics-rockpropertypub-gws/ga_rock_properties_wfs/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=ga_rock_properties_wfs:remanent_magnetisation,ga_rock_properties_wfs:scalar_results&maxFeatures=50&outputFormat=application%2Fgml%2Bxml%3B+version%3D3.2&featureID={id}",
+        url: "/explorer-cossap-service/service/tile/",
+        x: 138,
+        y: -28,
+        zoom: 4,
+        maxCount: 300000
     },
     worldView: {
         axisHelper: {
@@ -116,6 +162,7 @@ Config.preferences = {
 };
 
 exports.SurfaceWorker = SurfaceWorker;
+exports.WorkerEvent = WorkerEvent;
 exports.Config = Config;
 
 Object.defineProperty(exports, '__esModule', { value: true });

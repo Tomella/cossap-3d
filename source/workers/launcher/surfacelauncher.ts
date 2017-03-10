@@ -1,5 +1,8 @@
 import { Config } from "../../app/config";
 import { Surface } from "../../surface/surface";
+import { SurfaceEvent } from "../../surface/surfaceevent";
+import { SurfaceSwitch } from "../../surface/surfaceswitch";
+import { WorkerEvent } from "../workerevent";
 declare var Explorer3d;
 
 export class SurfaceLauncher extends Surface {
@@ -8,6 +11,7 @@ export class SurfaceLauncher extends Surface {
    bbox: number[];
    aspectRatio: number;
 
+   private switches: SurfaceSwitch[] = [];
    private materialComplete = false;
    private geometry;
    private startMilli: number;
@@ -23,7 +27,6 @@ export class SurfaceLauncher extends Surface {
    parse() {
       this.startMilli = Date.now();
       let worker = new Worker(Config.preferences.surfaceWorkerLocation);
-      let geometry, material;
       let width = this.options.hiResTopoWidth ? this.options.hiResTopoWidth : 512;
       let height = Math.floor(width * this.options.resolutionY / this.options.resolutionX);
 
@@ -39,32 +42,144 @@ export class SurfaceLauncher extends Surface {
          height
       };
 
-      worker.addEventListener('message', message => {
+      let heapMapState;
+      let geometryState;
+
+      worker.addEventListener("message", message => {
          let data = message.data;
-         if (data.type === "xyz.loaded") {
-            this.createGeometry(options, data.data).then(geom => {
-               this.geometry = geom;
-               this.checkComplete();
-            });;
-         } else if (data.type === "color.loaded") {
-            this.createHeatmapMaterial(options, data.data);
+         if (data.type === WorkerEvent.XYZ_LOADED) {
+            console.log("WorkerEvent.XYZ_LOADED: " + this.since());
+            this.completeGeometry(geometryState.geometry);
+            this.checkComplete();
+         } else if (data.type === WorkerEvent.XYZ_BLOCK) {
+            console.log("WorkerEvent.XYZ_BLOCK: " + this.since());
+            this.extendGeometry(geometryState, data.data);
+         } else if (data.type === WorkerEvent.COLOR_BLOCK) {
+            console.log("WorkerEvent.COLOR_BLOCK: " + this.since());
+            this.extendHeatmapMaterial(heapMapState, options, data.data);
+         } else if (data.type === WorkerEvent.COLOR_LOADED) {
+            console.log("WorkerEvent.COLOR_LOADED: " + this.since());
+            this.completeHeatmapMaterial(heapMapState.mask, options);
          }
       });
 
       worker.postMessage(options);
 
+      heapMapState = this.prepareHeatMapMaterial(options);
+      geometryState = this.prepareGeometry();
       this.createImageMaterial();
-      this.fetchTopoMaterial(options);
+      this.createTopoMaterial(options);
+   }
+
+   prepareGeometry(): {geometry, count} {
+      console.log("createGeometry start: " + this.since());
+      let resolutionX = this.options.resolutionX;
+      let resolutionY = this.options.resolutionY;
+      let geometry = new THREE.PlaneGeometry(resolutionX, resolutionY, resolutionX - 1, resolutionY - 1);
+      return {
+         geometry,
+         count: 0
+      };
+   }
+
+   extendGeometry(state, res) {
+      let geometry = state.geometry;
+      let count = state.count;
+      res.forEach(xyz => {
+         let vertice = geometry.vertices[count++];
+         vertice.z = xyz.z;
+         vertice.x = xyz.x;
+         vertice.y = xyz.y;
+      });
+      state.count = count;
+   }
+
+   completeGeometry(geometry) {
+      console.log("createGeometry compute start: " + this.since());
+      geometry.computeBoundingSphere();
+      geometry.computeFaceNormals();
+      geometry.computeVertexNormals();
+      this.geometry = geometry;
+      console.log("createGeometry end: " + this.since());
+   }
+
+   prepareHeatMapMaterial(options): {mask, context, id, d} {
+      console.log("createHeatmapMaterial start: " + this.since());
+      let mask = document.createElement("canvas");
+      mask.width = options.resolutionX;
+      mask.height = options.resolutionY;
+
+      let context = mask.getContext("2d");
+      let id = context.createImageData(1, 1);
+      let d = id.data;
+
+      return { mask, context, id, d};
+   }
+
+   extendHeatmapMaterial({mask, context, id, d}, options, res) {
+      console.log("createHeatmapMaterial continue: " + this.since());
+      res.forEach(({ x, y, r, g, b, a }) => {
+         d[0] = r;
+         d[1] = g;
+         d[2] = b;
+         d[3] = a;
+         context.putImageData(id, x, y);
+      });
+   }
+
+   completeHeatmapMaterial(mask, options) {
+      let texture = new THREE.Texture(mask);
+      texture.needsUpdate = true;
+      let opacity = options.opacity ? options.opacity : 1;
+
+      let material = new THREE.MeshPhongMaterial({
+         map: texture,
+         transparent: true,
+         opacity: opacity,
+         side: THREE.DoubleSide
+      });
+
+      this.materials.heatmap = material;
+      this.pushMaterialLoadedEvent(new SurfaceSwitch("heatmap", this, material));
+      console.log("createHeatmapMaterial end: " + this.since());
+   }
+
+
+   private pushMaterialLoadedEvent(data?: SurfaceSwitch): void {
+      if (data) {
+         this.switches.push(data);
+      }
+
+      if (this.surface) {
+         this.switches.forEach(data => this.dispatchEvent({type: SurfaceEvent.MATERIAL_LOADED, data}));
+         this.switches = [];
+      }
    }
 
    checkComplete() {
       if (this.materialComplete && this.geometry) {
          this.createMesh();
          this.dispatchEvent({
-            type: Explorer3d.WcsEsriImageryParser.TEXTURE_LOADED_EVENT,
+            type: SurfaceEvent.SURFACE_LOADED,
             data: this.surface
          });
+         this.pushMaterialLoadedEvent();
       }
+   }
+
+   createTopoMaterial(data) {
+      let self = this;
+      this.materials.topo = new Explorer3d.WmsMaterial({
+         template: this.options.topoTemplate,
+         width: data.width,
+         height: data.height, // Yeah, I know it is the same
+         transparent: true,
+         bbox: data.bbox,
+         opacity: 0.7,
+         onLoad: () => {
+            self.pushMaterialLoadedEvent(new SurfaceSwitch("topo", self, self.materials.topo));
+         }
+      });
    }
 
    createImageMaterial() {
@@ -78,138 +193,21 @@ export class SurfaceLauncher extends Surface {
       loader.crossOrigin = "";
 
       let opacity = this.options.opacity ? this.options.opacity : 1;
-      let material = new THREE.MeshPhongMaterial({
+      let material = this.materials.image = new THREE.MeshPhongMaterial({
          map: loader.load(url, event => {
             this.materialComplete = true;
+            this.pushMaterialLoadedEvent(new SurfaceSwitch("image", this, material));
             this.checkComplete();
          }),
          transparent: true,
          opacity: opacity,
          side: THREE.DoubleSide
       });
-      this.materials.image = material;
       console.log("createImageMaterial end: " + this.since());
-   }
-
-   createHeatmapMaterial(options, res) {
-      console.log("createHeatmapMaterial start: " + this.since());
-      let self = this;
-      let mask = document.createElement("canvas");
-      mask.width = options.resolutionX;
-      mask.height = options.resolutionY;
-
-      let context = mask.getContext("2d");
-      let id = context.createImageData(1, 1);
-      let d = id.data;
-
-      let count = 0;
-      fillColor();
-
-      function fillColor() {
-         setTimeout(function () {
-            if (count >= res.length) {
-               complete();
-               return;
-            }
-
-            do {
-               let item = res[count++];
-               if (count > res.length) {
-                  break;
-               }
-               drawPixel(item);
-             } while (count % 1000);
-
-            fillColor();
-         }, 5);
-      }
-
-      function complete() {
-         let texture = new THREE.Texture(mask);
-         texture.needsUpdate = true;
-         let opacity = options.opacity ? options.opacity : 1;
-
-         let material = new THREE.MeshPhongMaterial({
-            map: texture,
-            transparent: true,
-            opacity: opacity,
-            side: THREE.DoubleSide
-         });
-
-
-         self.materials.heatmap = material;
-
-         console.log("createHeatmapMaterial end: " + self.since());
-      }
-
-      function drawPixel(item: { x, y, r, g, b, a }) {
-         d[0] = item.r;
-         d[1] = item.g;
-         d[2] = item.b;
-         d[3] = item.a;
-         context.putImageData(id, item.x, item.y);
-      }
    }
 
    createMesh() {
       this.surface = new THREE.Mesh(this.geometry, this.materials.image);
-   }
-
-   createGeometry(options, res) {
-      let self = this;
-      console.log("createGeometry start: " + this.since());
-      let resolutionX = this.options.resolutionX;
-      let resolutionY = res.length / resolutionX;
-      let geometry = new THREE.PlaneGeometry(resolutionX, resolutionY, resolutionX - 1, resolutionY - 1);
-      let bbox = this.options.bbox;
-
-      return new Promise((resolve, reject) => {
-         let count = 0;
-
-         if (res.length) {
-            processBlock();
-         } else {
-            reject("No data");
-         }
-
-         function processBlock() {
-            setTimeout(function () {
-               if (count >= res.length) {
-                  cleanUp();
-                  return;
-               }
-
-               do {
-                  let vertice = geometry.vertices[count];
-                  let xyz = res[count++];
-                  if (count > res.length) {
-                     break;
-                  }
-
-                  vertice.z = xyz.z;
-                  vertice.x = xyz.x;
-                  vertice.y = xyz.y;
-               } while (count % 1000);
-               processBlock();
-            }, 5);
-
-            function cleanUp() {
-               geometry.computeBoundingSphere();
-               geometry.computeFaceNormals();
-               geometry.computeVertexNormals();
-               resolve(geometry);
-               console.log("createGeometry end: " + self.since());
-            }
-         }
-      });
-   }
-
-   switchSurface(name) {
-      let opacity = this.surface.material.opacity;
-      this.surface.visible = true;
-      this.surface.material = this.materials[name];
-      this.surface.material.opacity = opacity;
-      this.surface.material.needsUpdate = true;
    }
 }
 

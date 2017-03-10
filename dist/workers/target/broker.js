@@ -35,7 +35,7 @@
       var loader = new Cossap3d.SurfaceWorker(mergedOptions);
 
       // Put in some listeners here.
-      loader.addEventListener(Cossap3d.SurfaceWorker.XYZ_LOADED, function(event) {
+      loader.addEventListener(Cossap3d.WorkerEvent.XYZ_LOADED, function(event) {
          context.postMessage({
             type: event.type,
             data:event.data
@@ -43,7 +43,23 @@
       });
 
       // Put in some listeners here.
-      loader.addEventListener(Cossap3d.SurfaceWorker.COLOR_LOADED, function(event) {
+      loader.addEventListener(Cossap3d.WorkerEvent.XYZ_BLOCK, function(event) {
+         context.postMessage({
+            type: event.type,
+            data:event.data
+         });
+      });
+
+      // Put in some listeners here.
+      loader.addEventListener(Cossap3d.WorkerEvent.COLOR_LOADED, function(event) {
+         context.postMessage({
+            type: event.type,
+            data:event.data
+         });
+      });
+
+      // Put in some listeners here.
+      loader.addEventListener(Cossap3d.WorkerEvent.COLOR_BLOCK, function(event) {
          context.postMessage({
             type: event.type,
             data:event.data

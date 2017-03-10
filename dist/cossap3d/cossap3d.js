@@ -152,17 +152,20 @@ var CossapCameraPositioner = (function (_super) {
     return CossapCameraPositioner;
 }(Explorer3d.CameraPositioner));
 
-var Mappings = (function (_super) {
-    __extends(Mappings, _super);
+/**
+ * This is the bridge between the UI and the model
+ */
+var Mappings = (function () {
     function Mappings(factory, dom) {
-        var _this = _super.call(this) || this;
-        _this.factory = factory;
-        _this.dom = dom;
-        _this.mapVerticalExagerate();
-        _this.mapSurfaceOpacity();
-        _this.mapShowHideBoreholes();
-        _this.mapSurfaceMaterialRadio();
-        return _this;
+        this.factory = factory;
+        this.dom = dom;
+        this._surfaceMaterialSelect = "image";
+        this._materials = {};
+        this._radioMap = {};
+        this.mapVerticalExagerate();
+        this.mapSurfaceOpacity();
+        this.mapShowHideBoreholes();
+        this.mapSurfaceMaterialRadio();
     }
     Mappings.prototype.mapVerticalExagerate = function () {
         var element = this.dom.verticalExaggeration;
@@ -178,25 +181,11 @@ var Mappings = (function (_super) {
             view.innerHTML = element.value;
         });
     };
-    Object.defineProperty(Mappings.prototype, "surface", {
-        set: function (surface) {
-            var opacity = this.dom.surfaceOpacity.value;
-            console.log("Setting opacity to " + opacity);
-            this._surface = surface;
-            if (surface)
-                surface.material.opacity = opacity;
-        },
-        enumerable: true,
-        configurable: true
-    });
     Mappings.prototype.mapSurfaceOpacity = function () {
         var _this = this;
         var element = this.dom.surfaceOpacity;
         element.addEventListener("change", function () {
-            if (_this._surface) {
-                _this._surface.material.opacity = _this.dom.surfaceOpacity.value;
-            }
-            _this.dom.surfaceOpacity.blur();
+            _this._materials[_this._surfaceMaterialSelect].on(+element.value);
         });
     };
     Object.defineProperty(Mappings.prototype, "boreholes", {
@@ -208,38 +197,58 @@ var Mappings = (function (_super) {
         enumerable: true,
         configurable: true
     });
-    Object.defineProperty(Mappings.prototype, "material", {
-        get: function () {
-            return this.dom.surfaceMaterialSelect.value;
-        },
-        set: function (mat) {
-            this.dom.surfaceMaterialSelect.value = mat;
-        },
-        enumerable: true,
-        configurable: true
-    });
-    Mappings.prototype.mapSurfaceMaterialRadio = function () {
-        var elements = Array.from(this.dom.surfaceMaterialRadio);
-        var self = this;
-        elements.forEach(function (element) {
-            element.addEventListener("change", eventHandler);
-        });
-        function eventHandler(event) {
-            self.dispatchEvent({ type: "material.changed", name: event.target.value });
+    Mappings.prototype.addMaterial = function (detail) {
+        var _this = this;
+        var name = detail.name;
+        var material = this._materials[name];
+        var keys = Object.keys(this._materials);
+        if (!material || detail.priority > material.priority) {
+            Object.keys(this._materials).forEach(function (key) {
+                _this._materials[key].off();
+            });
+            this._materials[name] = detail;
+            this._radioMap[name].disabled = false;
         }
-        
+        if (this._materials[this._surfaceMaterialSelect]) {
+            this._materials[this._surfaceMaterialSelect].on(+this.dom.surfaceOpacity.value);
+        }
+    };
+    Mappings.prototype.hasMaterial = function (name) {
+        return !!this._materials[name];
+    };
+    Mappings.prototype.mapSurfaceMaterialRadio = function () {
+        var _this = this;
+        var elements = Array.from(this.dom.surfaceMaterialRadio);
+        elements.forEach(function (element) {
+            element.addEventListener("change", function (event) {
+                var name = event.target.value;
+                _this._surfaceMaterialSelect = name;
+                var details = _this._materials[name];
+                var opacity = +_this.dom.surfaceOpacity.value;
+                Object.keys(_this._materials).forEach(function (key) {
+                    _this._materials[key].off();
+                });
+                details.on(opacity);
+            });
+            _this._radioMap[element.value] = element;
+        });
     };
     Mappings.prototype.mapShowHideBoreholes = function () {
         var _this = this;
         var element = this.dom.showHideBoreholes;
         element.addEventListener("change", function () {
-            if (_this._boreholes)
+            if (_this._boreholes) {
                 _this._boreholes.visible = _this.dom.showHideBoreholes.checked;
+            }
+            
         });
     };
     return Mappings;
-}(THREE.EventDispatcher));
+}());
 
+/**
+ * Literal bindings between UI and Javascript friendly accessors.
+ */
 var Bind = (function () {
     function Bind() {
     }
@@ -256,6 +265,34 @@ Bind.dom = {
     surfaceMaterialRadio: document.getElementsByName("surfaceMaterialRadio"),
     invalidParameter: document.getElementById("invalidParameter")
 };
+
+var SurfaceEvent = (function () {
+    function SurfaceEvent() {
+    }
+    return SurfaceEvent;
+}());
+SurfaceEvent.METADATA_LOADED = "metadata.loaded";
+SurfaceEvent.SURFACE_LOADED = "surface.loaded";
+SurfaceEvent.MATERIAL_LOADED = "material.loaded";
+SurfaceEvent.SURFACE_CHANGED = "surface.changed";
+
+var SurfaceSwitch = (function () {
+    function SurfaceSwitch(name, surface, material, priority) {
+        if (priority === void 0) { priority = 0; }
+        this.name = name;
+        this.surface = surface;
+        this.material = material;
+        this.priority = priority;
+    }
+    SurfaceSwitch.prototype.on = function (opacity) {
+        if (opacity === void 0) { opacity = 1; }
+        this.surface.switchSurface(this.name, opacity);
+    };
+    SurfaceSwitch.prototype.off = function () {
+        this.surface.visible = false;
+    };
+    return SurfaceSwitch;
+}());
 
 var Surface = (function (_super) {
     __extends(Surface, _super);
@@ -274,7 +311,6 @@ var Surface = (function (_super) {
             var data = event.data;
             _this.bbox = data.bbox;
             _this.aspectRatio = data.aspectRatio;
-            _this.fetchTopoMaterial(data);
         });
         parser.addEventListener(Explorer3d.WcsEsriImageryParser.TEXTURE_LOADED_EVENT, function (event) {
             _this.dispatchEvent(event);
@@ -292,16 +328,6 @@ var Surface = (function (_super) {
             Explorer3d.Logger.error(err);
         });
     };
-    Surface.prototype.fetchTopoMaterial = function (data) {
-        this.materials.topo = new Explorer3d.WmsMaterial({
-            template: this.options.topoTemplate,
-            width: data.width,
-            height: data.height,
-            transparent: true,
-            bbox: data.bbox,
-            opacity: 0.7
-        });
-    };
     Surface.prototype.fetchWireframeMaterial = function () {
         this.materials.wireframe = new THREE.MeshBasicMaterial({
             color: 0xeeeeee,
@@ -309,22 +335,22 @@ var Surface = (function (_super) {
             opacity: 0.7,
             wireframe: true
         });
+        this.dispatchEvent({ type: SurfaceEvent.MATERIAL_LOADED, data: new SurfaceSwitch("wireframe", this, this.materials.wireframe) });
     };
     Surface.prototype.fetchMaterials = function () {
         var points = this.surface.geometry.vertices;
         var resolutionX = this.options.resolutionX;
         this.materials.image = this.surface.material;
-        this.materials.heatmap = new Explorer3d.ElevationMaterial({
-            resolutionX: resolutionX,
-            resolutionY: points.length / resolutionX,
-            data: points,
-            transparent: true,
-            opacity: 1,
-            side: THREE.DoubleSide
-        });
+        this.dispatchEvent({ type: SurfaceEvent.MATERIAL_LOADED, data: new SurfaceSwitch("image", this, this.materials.image) });
     };
-    Surface.prototype.switchSurface = function (name) {
-        var opacity = this.surface.material.opacity;
+    Object.defineProperty(Surface.prototype, "visible", {
+        set: function (on) {
+            this.surface.visible = on;
+        },
+        enumerable: true,
+        configurable: true
+    });
+    Surface.prototype.switchSurface = function (name, opacity) {
         this.surface.visible = true;
         this.surface.material = this.materials[name];
         this.surface.material.opacity = opacity;
@@ -332,12 +358,13 @@ var Surface = (function (_super) {
     };
     return Surface;
 }(THREE.EventDispatcher));
-Surface.META_DATA_LOADED = Explorer3d.WcsEsriImageryParser.BBOX_CHANGED_EVENT;
-Surface.TEXTURE_LOADED_EVENT = Explorer3d.WcsEsriImageryParser.TEXTURE_LOADED_EVENT;
 function seconds$1() {
     return (Date.now() % 100000) / 1000;
 }
 
+/**
+ * Javascript container for all things to do with configuration.
+ */
 var Config = (function () {
     function Config() {
     }
@@ -360,13 +387,21 @@ Config.preferences = {
         resolutionX: 75,
         imageWidth: 256,
         hiResX: 700,
-        hiResImageWidth: 2048,
+        hiResImageWidth: 3000,
         hiResTopoWidth: 512,
         opacity: 1,
         extent: new Elevation.Extent2d(1000000, -10000000, 20000000, -899000),
     },
     boreholes: {
         template: "http://dev.cossap.gadevs.ga/explorer-cossap-services/service/boreholes/features/${bbox}"
+    },
+    rocks: {
+        dataUrl: "http://www.ga.gov.au/geophysics-rockpropertypub-gws/ga_rock_properties_wfs/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=ga_rock_properties_wfs:remanent_magnetisation,ga_rock_properties_wfs:scalar_results&maxFeatures=50&outputFormat=application%2Fgml%2Bxml%3B+version%3D3.2&featureID={id}",
+        url: "/explorer-cossap-service/service/tile/",
+        x: 138,
+        y: -28,
+        zoom: 4,
+        maxCount: 300000
     },
     worldView: {
         axisHelper: {
@@ -380,11 +415,22 @@ Config.preferences = {
     }
 };
 
+var WorkerEvent = (function () {
+    function WorkerEvent() {
+    }
+    return WorkerEvent;
+}());
+WorkerEvent.XYZ_LOADED = "xyz.loaded";
+WorkerEvent.XYZ_BLOCK = "xyz.block";
+WorkerEvent.COLOR_LOADED = "color.loaded";
+WorkerEvent.COLOR_BLOCK = "color.block";
+
 var SurfaceLauncher = (function (_super) {
     __extends(SurfaceLauncher, _super);
     function SurfaceLauncher(options) {
         var _this = _super.call(this, options) || this;
         _this.materials = {};
+        _this.switches = [];
         _this.materialComplete = false;
         return _this;
     }
@@ -395,7 +441,6 @@ var SurfaceLauncher = (function (_super) {
         var _this = this;
         this.startMilli = Date.now();
         var worker = new Worker(Config.preferences.surfaceWorkerLocation);
-        var geometry, material;
         var width = this.options.hiResTopoWidth ? this.options.hiResTopoWidth : 512;
         var height = Math.floor(width * this.options.resolutionY / this.options.resolutionX);
         var extent = this.options.extent;
@@ -409,31 +454,132 @@ var SurfaceLauncher = (function (_super) {
             width: width,
             height: height
         };
-        worker.addEventListener('message', function (message) {
+        var heapMapState;
+        var geometryState;
+        worker.addEventListener("message", function (message) {
             var data = message.data;
-            if (data.type === "xyz.loaded") {
-                _this.createGeometry(options, data.data).then(function (geom) {
-                    _this.geometry = geom;
-                    _this.checkComplete();
-                });
-                
+            if (data.type === WorkerEvent.XYZ_LOADED) {
+                console.log("WorkerEvent.XYZ_LOADED: " + _this.since());
+                _this.completeGeometry(geometryState.geometry);
+                _this.checkComplete();
             }
-            else if (data.type === "color.loaded") {
-                _this.createHeatmapMaterial(options, data.data);
+            else if (data.type === WorkerEvent.XYZ_BLOCK) {
+                console.log("WorkerEvent.XYZ_BLOCK: " + _this.since());
+                _this.extendGeometry(geometryState, data.data);
+            }
+            else if (data.type === WorkerEvent.COLOR_BLOCK) {
+                console.log("WorkerEvent.COLOR_BLOCK: " + _this.since());
+                _this.extendHeatmapMaterial(heapMapState, options, data.data);
+            }
+            else if (data.type === WorkerEvent.COLOR_LOADED) {
+                console.log("WorkerEvent.COLOR_LOADED: " + _this.since());
+                _this.completeHeatmapMaterial(heapMapState.mask, options);
             }
         });
         worker.postMessage(options);
+        heapMapState = this.prepareHeatMapMaterial(options);
+        geometryState = this.prepareGeometry();
         this.createImageMaterial();
-        this.fetchTopoMaterial(options);
+        this.createTopoMaterial(options);
+    };
+    SurfaceLauncher.prototype.prepareGeometry = function () {
+        console.log("createGeometry start: " + this.since());
+        var resolutionX = this.options.resolutionX;
+        var resolutionY = this.options.resolutionY;
+        var geometry = new THREE.PlaneGeometry(resolutionX, resolutionY, resolutionX - 1, resolutionY - 1);
+        return {
+            geometry: geometry,
+            count: 0
+        };
+    };
+    SurfaceLauncher.prototype.extendGeometry = function (state, res) {
+        var geometry = state.geometry;
+        var count = state.count;
+        res.forEach(function (xyz) {
+            var vertice = geometry.vertices[count++];
+            vertice.z = xyz.z;
+            vertice.x = xyz.x;
+            vertice.y = xyz.y;
+        });
+        state.count = count;
+    };
+    SurfaceLauncher.prototype.completeGeometry = function (geometry) {
+        console.log("createGeometry compute start: " + this.since());
+        geometry.computeBoundingSphere();
+        geometry.computeFaceNormals();
+        geometry.computeVertexNormals();
+        this.geometry = geometry;
+        console.log("createGeometry end: " + this.since());
+    };
+    SurfaceLauncher.prototype.prepareHeatMapMaterial = function (options) {
+        console.log("createHeatmapMaterial start: " + this.since());
+        var mask = document.createElement("canvas");
+        mask.width = options.resolutionX;
+        mask.height = options.resolutionY;
+        var context = mask.getContext("2d");
+        var id = context.createImageData(1, 1);
+        var d = id.data;
+        return { mask: mask, context: context, id: id, d: d };
+    };
+    SurfaceLauncher.prototype.extendHeatmapMaterial = function (_a, options, res) {
+        var mask = _a.mask, context = _a.context, id = _a.id, d = _a.d;
+        console.log("createHeatmapMaterial continue: " + this.since());
+        res.forEach(function (_a) {
+            var x = _a.x, y = _a.y, r = _a.r, g = _a.g, b = _a.b, a = _a.a;
+            d[0] = r;
+            d[1] = g;
+            d[2] = b;
+            d[3] = a;
+            context.putImageData(id, x, y);
+        });
+    };
+    SurfaceLauncher.prototype.completeHeatmapMaterial = function (mask, options) {
+        var texture = new THREE.Texture(mask);
+        texture.needsUpdate = true;
+        var opacity = options.opacity ? options.opacity : 1;
+        var material = new THREE.MeshPhongMaterial({
+            map: texture,
+            transparent: true,
+            opacity: opacity,
+            side: THREE.DoubleSide
+        });
+        this.materials.heatmap = material;
+        this.pushMaterialLoadedEvent(new SurfaceSwitch("heatmap", this, material));
+        console.log("createHeatmapMaterial end: " + this.since());
+    };
+    SurfaceLauncher.prototype.pushMaterialLoadedEvent = function (data) {
+        var _this = this;
+        if (data) {
+            this.switches.push(data);
+        }
+        if (this.surface) {
+            this.switches.forEach(function (data) { return _this.dispatchEvent({ type: SurfaceEvent.MATERIAL_LOADED, data: data }); });
+            this.switches = [];
+        }
     };
     SurfaceLauncher.prototype.checkComplete = function () {
         if (this.materialComplete && this.geometry) {
             this.createMesh();
             this.dispatchEvent({
-                type: Explorer3d.WcsEsriImageryParser.TEXTURE_LOADED_EVENT,
+                type: SurfaceEvent.SURFACE_LOADED,
                 data: this.surface
             });
+            this.pushMaterialLoadedEvent();
         }
+    };
+    SurfaceLauncher.prototype.createTopoMaterial = function (data) {
+        var self = this;
+        this.materials.topo = new Explorer3d.WmsMaterial({
+            template: this.options.topoTemplate,
+            width: data.width,
+            height: data.height,
+            transparent: true,
+            bbox: data.bbox,
+            opacity: 0.7,
+            onLoad: function () {
+                self.pushMaterialLoadedEvent(new SurfaceSwitch("topo", self, self.materials.topo));
+            }
+        });
     };
     SurfaceLauncher.prototype.createImageMaterial = function () {
         var _this = this;
@@ -445,118 +591,20 @@ var SurfaceLauncher = (function (_super) {
         var loader = new THREE.TextureLoader();
         loader.crossOrigin = "";
         var opacity = this.options.opacity ? this.options.opacity : 1;
-        var material = new THREE.MeshPhongMaterial({
+        var material = this.materials.image = new THREE.MeshPhongMaterial({
             map: loader.load(url, function (event) {
                 _this.materialComplete = true;
+                _this.pushMaterialLoadedEvent(new SurfaceSwitch("image", _this, material));
                 _this.checkComplete();
             }),
             transparent: true,
             opacity: opacity,
             side: THREE.DoubleSide
         });
-        this.materials.image = material;
         console.log("createImageMaterial end: " + this.since());
-    };
-    SurfaceLauncher.prototype.createHeatmapMaterial = function (options, res) {
-        console.log("createHeatmapMaterial start: " + this.since());
-        var self = this;
-        var mask = document.createElement("canvas");
-        mask.width = options.resolutionX;
-        mask.height = options.resolutionY;
-        var context = mask.getContext("2d");
-        var id = context.createImageData(1, 1);
-        var d = id.data;
-        var count = 0;
-        fillColor();
-        function fillColor() {
-            setTimeout(function () {
-                if (count >= res.length) {
-                    complete();
-                    return;
-                }
-                do {
-                    var item = res[count++];
-                    if (count > res.length) {
-                        break;
-                    }
-                    drawPixel(item);
-                } while (count % 1000);
-                fillColor();
-            }, 5);
-        }
-        function complete() {
-            var texture = new THREE.Texture(mask);
-            texture.needsUpdate = true;
-            var opacity = options.opacity ? options.opacity : 1;
-            var material = new THREE.MeshPhongMaterial({
-                map: texture,
-                transparent: true,
-                opacity: opacity,
-                side: THREE.DoubleSide
-            });
-            self.materials.heatmap = material;
-            console.log("createHeatmapMaterial end: " + self.since());
-        }
-        function drawPixel(item) {
-            d[0] = item.r;
-            d[1] = item.g;
-            d[2] = item.b;
-            d[3] = item.a;
-            context.putImageData(id, item.x, item.y);
-        }
     };
     SurfaceLauncher.prototype.createMesh = function () {
         this.surface = new THREE.Mesh(this.geometry, this.materials.image);
-    };
-    SurfaceLauncher.prototype.createGeometry = function (options, res) {
-        var self = this;
-        console.log("createGeometry start: " + this.since());
-        var resolutionX = this.options.resolutionX;
-        var resolutionY = res.length / resolutionX;
-        var geometry = new THREE.PlaneGeometry(resolutionX, resolutionY, resolutionX - 1, resolutionY - 1);
-        var bbox = this.options.bbox;
-        return new Promise(function (resolve, reject) {
-            var count = 0;
-            if (res.length) {
-                processBlock();
-            }
-            else {
-                reject("No data");
-            }
-            function processBlock() {
-                setTimeout(function () {
-                    if (count >= res.length) {
-                        cleanUp();
-                        return;
-                    }
-                    do {
-                        var vertice = geometry.vertices[count];
-                        var xyz = res[count++];
-                        if (count > res.length) {
-                            break;
-                        }
-                        vertice.z = xyz.z;
-                        vertice.x = xyz.x;
-                        vertice.y = xyz.y;
-                    } while (count % 1000);
-                    processBlock();
-                }, 5);
-                function cleanUp() {
-                    geometry.computeBoundingSphere();
-                    geometry.computeFaceNormals();
-                    geometry.computeVertexNormals();
-                    resolve(geometry);
-                    console.log("createGeometry end: " + self.since());
-                }
-            }
-        });
-    };
-    SurfaceLauncher.prototype.switchSurface = function (name) {
-        var opacity = this.surface.material.opacity;
-        this.surface.visible = true;
-        this.surface.material = this.materials[name];
-        this.surface.material.opacity = opacity;
-        this.surface.material.needsUpdate = true;
     };
     return SurfaceLauncher;
 }(Surface));
@@ -574,9 +622,12 @@ var SurfaceManager = (function (_super) {
         this.surface = new Surface(this.options);
         console.log("options1");
         console.log(this.options);
-        this.surface.addEventListener(Surface.META_DATA_LOADED, function (event) {
+        this.surface.addEventListener(Explorer3d.WcsEsriImageryParser.BBOX_CHANGED_EVENT, function (event) {
             _this.dispatchEvent(event);
-            _this.loadHiRes(event.data);
+            setTimeout(function () { return _this.loadHiRes(event.data); }, 500);
+        });
+        this.surface.addEventListener(SurfaceEvent.MATERIAL_LOADED, function (event) {
+            _this.dispatchEvent(event);
         });
         return this.surface.parse().then(function (data) {
             return data;
@@ -613,42 +664,19 @@ var SurfaceManager = (function (_super) {
         });
         this.hiResSurface = new SurfaceLauncher(options);
         // this.hiResSurface = new Surface(options);
-        this.hiResSurface.addEventListener(Surface.TEXTURE_LOADED_EVENT, function (event) {
-            var data = event.data;
-            _this.transitionToHiRes(data);
-            _this.dispatchEvent({ type: SurfaceManager.HIRES_LOADED, data: data });
+        this.hiResSurface.addEventListener(SurfaceEvent.MATERIAL_LOADED, function (event) {
+            // Set the priority higher than lo-res
+            event.data.priority = 1;
+            _this.dispatchEvent(event);
+        });
+        // this.hiResSurface = new Surface(options);
+        this.hiResSurface.addEventListener(SurfaceEvent.SURFACE_LOADED, function (event) {
+            _this.dispatchEvent(event);
         });
         this.hiResSurface.parse();
     };
-    SurfaceManager.prototype.transitionToHiRes = function (data) {
-        var loRes = this.surface.surface;
-        var opacity = loRes.material.opacity;
-        console.log("Running loRes = " + opacity);
-        loRes.visible = false;
-    };
-    SurfaceManager.prototype.switchSurface = function (name) {
-        var actor;
-        if (!this.hiResSurface || !this.hiResSurface.surface) {
-            actor = this.surface;
-        }
-        else {
-            if (name === "wireframe") {
-                actor = this.surface;
-                this.hiResSurface.surface.visible = false;
-            }
-            else {
-                actor = this.hiResSurface;
-                this.surface.surface.visible = false;
-            }
-            this.dispatchEvent({ type: SurfaceManager.SURFACE_CHANGED, data: actor.surface });
-        }
-        actor.switchSurface(name);
-        return actor;
-    };
     return SurfaceManager;
 }(THREE.EventDispatcher));
-SurfaceManager.HIRES_LOADED = "surfacemanager.hires.loaded";
-SurfaceManager.SURFACE_CHANGED = "surfacemanager.surface.changed";
 
 // Given a bbox, return a 2d grid with the same x, y coordinates plus a z-coordinate as returned by the 1d TerrainLoader.
 var BoreholesLoader = (function () {
@@ -697,15 +725,11 @@ var BoreholesManager = (function () {
 
 var View = (function () {
     function View(bbox, options) {
-        var _this = this;
         this.bbox = bbox;
         this.options = options;
         if (bbox) {
             this.draw();
             this.mappings = new Mappings(this.factory, Bind.dom);
-            this.mappings.addEventListener("material.changed", function (event) {
-                _this.surface.switchSurface(event["name"]);
-            });
         }
         else {
             this.die();
@@ -729,17 +753,14 @@ var View = (function () {
         options.bbox.push(ur[1]);
         options.imageHeight = Math.round(options.imageWidth * (options.bbox[3] - options.bbox[1]) / (options.bbox[2] - options.bbox[0]));
         this.surface = new SurfaceManager(options);
-        this.surface.addEventListener(SurfaceManager.HIRES_LOADED, function (event) {
+        this.surface.addEventListener(SurfaceEvent.SURFACE_LOADED, function (event) {
             var surface = event.data;
-            _this.mappings.surface = surface;
             _this.factory.extend(surface, false);
         });
-        this.surface.addEventListener(SurfaceManager.SURFACE_CHANGED, function (event) {
-            var surface = event.data;
-            _this.mappings.surface = surface;
+        this.surface.addEventListener(SurfaceEvent.MATERIAL_LOADED, function (event) {
+            _this.mappings.addMaterial(event.data);
         });
         this.surface.parse().then(function (surface) {
-            _this.mappings.surface = surface;
             _this.boreholes = new BoreholesManager(Object.assign({ bbox: bbox }, _this.options.boreholes));
             _this.boreholes.parse().then(function (data) {
                 if (data) {
@@ -759,6 +780,9 @@ var View = (function () {
     return View;
 }());
 
+/**
+ * The bootstrap function starts the application.
+ */
 var view = null;
 if (!Promise && !!ES6Promise) {
     window["Promise"] = ES6Promise;

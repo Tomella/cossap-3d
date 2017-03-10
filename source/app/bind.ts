@@ -1,3 +1,6 @@
+/**
+ * Literal bindings between UI and Javascript friendly accessors.
+ */
 export class Bind {
 
    // Keep all the DOM stuff together. Make the abstraction to the HTML here
