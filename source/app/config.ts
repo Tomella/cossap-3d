@@ -19,8 +19,8 @@ export class Config {
          esriTemplate: "http://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&f=${format}&format=jpg&size=${size}",
          topoTemplate: "http://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/export?bbox=${bbox}&f=image&format=jpg&size=${width},${height}",
          resolutionX: 75,
-         imageWidth: 256,
-         hiResX: 700,
+         imageWidth: 128,
+         hiResX: 600,
          hiResImageWidth: 3000,
          hiResTopoWidth: 512,
          opacity: 1,
@@ -30,12 +30,11 @@ export class Config {
          template: "http://dev.cossap.gadevs.ga/explorer-cossap-services/service/boreholes/features/${bbox}"
       },
       rocks: {
-         dataUrl: "http://www.ga.gov.au/geophysics-rockpropertypub-gws/ga_rock_properties_wfs/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=ga_rock_properties_wfs:remanent_magnetisation,ga_rock_properties_wfs:scalar_results&maxFeatures=50&outputFormat=application%2Fgml%2Bxml%3B+version%3D3.2&featureID={id}",
-         url: "/explorer-cossap-service/service/tile/",
-         x: 138,
-         y: -28,
-         zoom: 4,
-         maxCount: 300000
+         dataUrl: "http://www.ga.gov.au/geophysics-rockpropertypub-gws/ga_rock_properties_wfs/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=ga_rock_properties_wfs:remanent_magnetisation,ga_rock_properties_wfs:scalar_results&maxFeatures=50&outputFormat=application%2Fgml%2Bxml%3B+version%3D3.2&featureID=${id}",
+         url: "/explorer-cossap-services/service/rocks/",
+         summaryService: "summary?zoom=${zoom}&xmin=${xmin}&xmax=${xmax}&ymin=${ymin}&ymax=${ymax}",
+         maxCount: 300000,
+         circumferance: 40000000 // Roughly, we don't care that much.
       },
       worldView: {
          axisHelper: {
