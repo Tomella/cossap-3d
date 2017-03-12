@@ -188,6 +188,15 @@ var Mappings = (function () {
             _this._materials[_this._surfaceMaterialSelect].on(+element.value);
         });
     };
+    Object.defineProperty(Mappings.prototype, "rocks", {
+        set: function (rocks) {
+            this._rocks = rocks;
+            if (rocks)
+                rocks.visible = this.dom.showHideBoreholes.checked;
+        },
+        enumerable: true,
+        configurable: true
+    });
     Object.defineProperty(Mappings.prototype, "boreholes", {
         set: function (boreholes) {
             this._boreholes = boreholes;
@@ -276,22 +285,30 @@ SurfaceEvent.SURFACE_LOADED = "surface.loaded";
 SurfaceEvent.MATERIAL_LOADED = "material.loaded";
 SurfaceEvent.SURFACE_CHANGED = "surface.changed";
 
-var SurfaceSwitch = (function () {
-    function SurfaceSwitch(name, surface, material, priority) {
+var Layer = (function (_super) {
+    __extends(Layer, _super);
+    function Layer() {
+        return _super !== null && _super.apply(this, arguments) || this;
+    }
+    return Layer;
+}(THREE.EventDispatcher));
+
+var LayerSwitch = (function () {
+    function LayerSwitch(name, layer, material, priority) {
         if (priority === void 0) { priority = 0; }
         this.name = name;
-        this.surface = surface;
+        this.layer = layer;
         this.material = material;
         this.priority = priority;
     }
-    SurfaceSwitch.prototype.on = function (opacity) {
+    LayerSwitch.prototype.on = function (opacity) {
         if (opacity === void 0) { opacity = 1; }
-        this.surface.switchSurface(this.name, opacity);
+        this.layer.switch(this.name, opacity);
     };
-    SurfaceSwitch.prototype.off = function () {
-        this.surface.visible = false;
+    LayerSwitch.prototype.off = function () {
+        this.layer.visible = false;
     };
-    return SurfaceSwitch;
+    return LayerSwitch;
 }());
 
 var Surface = (function (_super) {
@@ -313,14 +330,14 @@ var Surface = (function (_super) {
             _this.aspectRatio = data.aspectRatio;
         });
         parser.addEventListener(Explorer3d.WcsEsriImageryParser.TEXTURE_LOADED_EVENT, function (event) {
-            _this.dispatchEvent(event);
+            _this.dispatchEvent({ type: SurfaceEvent.MATERIAL_LOADED, data: new LayerSwitch("image", _this, _this.materials.image) });
         });
         return parser.parse().then(function (data) {
             _this.surface = data;
             Explorer3d.Logger.log(seconds$1() + ": We have shown the document");
             setTimeout(function () {
-                _this.fetchWireframeMaterial();
                 _this.fetchMaterials();
+                _this.fetchWireframeMaterial();
             });
             return data;
         }).catch(function (err) {
@@ -335,13 +352,12 @@ var Surface = (function (_super) {
             opacity: 0.7,
             wireframe: true
         });
-        this.dispatchEvent({ type: SurfaceEvent.MATERIAL_LOADED, data: new SurfaceSwitch("wireframe", this, this.materials.wireframe) });
+        this.dispatchEvent({ type: SurfaceEvent.MATERIAL_LOADED, data: new LayerSwitch("wireframe", this, this.materials.wireframe) });
     };
     Surface.prototype.fetchMaterials = function () {
         var points = this.surface.geometry.vertices;
         var resolutionX = this.options.resolutionX;
         this.materials.image = this.surface.material;
-        this.dispatchEvent({ type: SurfaceEvent.MATERIAL_LOADED, data: new SurfaceSwitch("image", this, this.materials.image) });
     };
     Object.defineProperty(Surface.prototype, "visible", {
         set: function (on) {
@@ -350,14 +366,14 @@ var Surface = (function (_super) {
         enumerable: true,
         configurable: true
     });
-    Surface.prototype.switchSurface = function (name, opacity) {
+    Surface.prototype.switch = function (name, opacity) {
         this.surface.visible = true;
         this.surface.material = this.materials[name];
         this.surface.material.opacity = opacity;
         this.surface.material.needsUpdate = true;
     };
     return Surface;
-}(THREE.EventDispatcher));
+}(Layer));
 function seconds$1() {
     return (Date.now() % 100000) / 1000;
 }
@@ -385,8 +401,8 @@ Config.preferences = {
         esriTemplate: "http://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&f=${format}&format=jpg&size=${size}",
         topoTemplate: "http://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/export?bbox=${bbox}&f=image&format=jpg&size=${width},${height}",
         resolutionX: 75,
-        imageWidth: 256,
-        hiResX: 700,
+        imageWidth: 128,
+        hiResX: 600,
         hiResImageWidth: 3000,
         hiResTopoWidth: 512,
         opacity: 1,
@@ -396,12 +412,11 @@ Config.preferences = {
         template: "http://dev.cossap.gadevs.ga/explorer-cossap-services/service/boreholes/features/${bbox}"
     },
     rocks: {
-        dataUrl: "http://www.ga.gov.au/geophysics-rockpropertypub-gws/ga_rock_properties_wfs/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=ga_rock_properties_wfs:remanent_magnetisation,ga_rock_properties_wfs:scalar_results&maxFeatures=50&outputFormat=application%2Fgml%2Bxml%3B+version%3D3.2&featureID={id}",
-        url: "/explorer-cossap-service/service/tile/",
-        x: 138,
-        y: -28,
-        zoom: 4,
-        maxCount: 300000
+        dataUrl: "http://www.ga.gov.au/geophysics-rockpropertypub-gws/ga_rock_properties_wfs/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=ga_rock_properties_wfs:remanent_magnetisation,ga_rock_properties_wfs:scalar_results&maxFeatures=50&outputFormat=application%2Fgml%2Bxml%3B+version%3D3.2&featureID=${id}",
+        url: "/explorer-cossap-services/service/rocks/",
+        summaryService: "summary?zoom=${zoom}&xmin=${xmin}&xmax=${xmax}&ymin=${ymin}&ymax=${ymax}",
+        maxCount: 300000,
+        circumferance: 40000000 // Roughly, we don't care that much.
     },
     worldView: {
         axisHelper: {
@@ -456,6 +471,8 @@ var SurfaceLauncher = (function (_super) {
         };
         var heapMapState;
         var geometryState;
+        this.createImageMaterial();
+        this.createTopoMaterial(options);
         worker.addEventListener("message", function (message) {
             var data = message.data;
             if (data.type === WorkerEvent.XYZ_LOADED) {
@@ -479,8 +496,6 @@ var SurfaceLauncher = (function (_super) {
         worker.postMessage(options);
         heapMapState = this.prepareHeatMapMaterial(options);
         geometryState = this.prepareGeometry();
-        this.createImageMaterial();
-        this.createTopoMaterial(options);
     };
     SurfaceLauncher.prototype.prepareGeometry = function () {
         console.log("createGeometry start: " + this.since());
@@ -544,7 +559,7 @@ var SurfaceLauncher = (function (_super) {
             side: THREE.DoubleSide
         });
         this.materials.heatmap = material;
-        this.pushMaterialLoadedEvent(new SurfaceSwitch("heatmap", this, material));
+        this.pushMaterialLoadedEvent(new LayerSwitch("heatmap", this, material));
         console.log("createHeatmapMaterial end: " + this.since());
     };
     SurfaceLauncher.prototype.pushMaterialLoadedEvent = function (data) {
@@ -577,7 +592,7 @@ var SurfaceLauncher = (function (_super) {
             bbox: data.bbox,
             opacity: 0.7,
             onLoad: function () {
-                self.pushMaterialLoadedEvent(new SurfaceSwitch("topo", self, self.materials.topo));
+                self.pushMaterialLoadedEvent(new LayerSwitch("topo", self, self.materials.topo));
             }
         });
     };
@@ -594,7 +609,7 @@ var SurfaceLauncher = (function (_super) {
         var material = this.materials.image = new THREE.MeshPhongMaterial({
             map: loader.load(url, function (event) {
                 _this.materialComplete = true;
-                _this.pushMaterialLoadedEvent(new SurfaceSwitch("image", _this, material));
+                _this.pushMaterialLoadedEvent(new LayerSwitch("image", _this, material));
                 _this.checkComplete();
             }),
             transparent: true,
@@ -723,6 +738,44 @@ var BoreholesManager = (function () {
     return BoreholesManager;
 }());
 
+var RocksLoader = (function () {
+    function RocksLoader(options) {
+        this.options = options;
+    }
+    RocksLoader.prototype.load = function () {
+        return null;
+    };
+    return RocksLoader;
+}());
+
+var RocksManager = (function () {
+    function RocksManager(options) {
+        this.options = options;
+        this.bbox3857 = bboxToEpsg3857(this.options.bbox);
+        var length = longestSide(this.bbox3857);
+        var ratio = this.options.circumference / length;
+        console.log("Mr rocks here");
+        console.log({ length: length, ratio: ratio, options: options });
+    }
+    RocksManager.prototype.parse = function () {
+        this.rocks = new RocksLoader(this.options);
+        return this.rocks.load().then(function (data) {
+            return null;
+        });
+    };
+    RocksManager.prototype.destroy = function () {
+    };
+    return RocksManager;
+}());
+function bboxToEpsg3857(bbox) {
+    var ll = proj4("EPSG:4326", "EPSG:3857", [bbox[0], bbox[1]]);
+    var ur = proj4("EPSG:4326", "EPSG:3857", [bbox[2], bbox[3]]);
+    return [ll[0], ll[1], ur[0], ur[1]];
+}
+function longestSide(bbox) {
+    return Math.max(bbox[0] - bbox[2], bbox[1] - bbox[3]);
+}
+
 var View = (function () {
     function View(bbox, options) {
         this.bbox = bbox;
@@ -761,18 +814,34 @@ var View = (function () {
             _this.mappings.addMaterial(event.data);
         });
         this.surface.parse().then(function (surface) {
-            _this.boreholes = new BoreholesManager(Object.assign({ bbox: bbox }, _this.options.boreholes));
-            _this.boreholes.parse().then(function (data) {
-                if (data) {
-                    _this.mappings.boreholes = data;
-                    _this.factory.extend(data, false);
-                }
-            }).catch(function (err) {
-                console.log("ERror boReholes");
-                console.log(err);
-            });
             // We got back a document so transform and show.
             _this.factory.show(surface);
+        });
+    };
+    View.prototype.fetchRocks = function (bbox) {
+        var _this = this;
+        this.rocks = new RocksManager(Object.assign({ bbox: bbox }, this.options.rocks));
+        this.rocks.parse().then(function (data) {
+            if (data) {
+                _this.mappings.rocks = data;
+                _this.factory.extend(data, false);
+            }
+        }).catch(function (err) {
+            console.log("ERror rocks");
+            console.log(err);
+        });
+    };
+    View.prototype.fetchBoreholes = function (bbox) {
+        var _this = this;
+        this.boreholes = new BoreholesManager(Object.assign({ bbox: bbox }, this.options.boreholes));
+        this.boreholes.parse().then(function (data) {
+            if (data) {
+                _this.mappings.boreholes = data;
+                _this.factory.extend(data, false);
+            }
+        }).catch(function (err) {
+            console.log("ERror boReholes");
+            console.log(err);
         });
     };
     View.prototype.destroy = function () {

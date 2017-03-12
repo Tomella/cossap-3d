@@ -10,6 +10,55 @@ function __extends(d, b) {
     d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
 }
 
+var EventDispatcher = (function () {
+    function EventDispatcher() {
+    }
+    EventDispatcher.prototype.addEventListener = function (type, listener) {
+        if (this.listeners === undefined)
+            this.listeners = {};
+        var listeners = this.listeners;
+        if (listeners[type] === undefined) {
+            listeners[type] = [];
+        }
+        if (listeners[type].indexOf(listener) === -1) {
+            listeners[type].push(listener);
+        }
+    };
+    EventDispatcher.prototype.hasEventListener = function (type, listener) {
+        if (this.listeners === undefined)
+            return false;
+        var listeners = this.listeners;
+        if (listeners[type] !== undefined && listeners[type].indexOf(listener) !== -1) {
+            return true;
+        }
+        return false;
+    };
+    EventDispatcher.prototype.removeEventListener = function (type, listener) {
+        if (this.listeners === undefined)
+            return;
+        var listenerArray = this.listeners[type];
+        if (listenerArray !== undefined) {
+            this.listeners[type] = listenerArray.filter(function (existing) { return listener !== existing; });
+        }
+    };
+    EventDispatcher.prototype.dispatchEvent = function (event) {
+        var _this = this;
+        var listeners = this.listeners;
+        if (listeners === undefined)
+            return;
+        var array = [];
+        var listenerArray = listeners[event.type];
+        if (listenerArray !== undefined) {
+            event.target = this;
+            listenerArray.forEach(function (listener) { return listener.call(_this, event); });
+        }
+    };
+    EventDispatcher.prototype.removeAllListeners = function () {
+        this.listeners = undefined;
+    };
+    return EventDispatcher;
+}());
+
 var WorkerEvent = (function () {
     function WorkerEvent() {
     }
@@ -29,6 +78,7 @@ var SurfaceWorker = (function (_super) {
     }
     SurfaceWorker.prototype.load = function () {
         var _this = this;
+        var options = Object.assign({}, this.options, {}, { template: this.options.template + "&store=false" });
         var restLoader = new Elevation.WcsXyzLoader(this.options);
         console.log("Running surface worker");
         return restLoader.load().then(function (res) {
@@ -38,6 +88,30 @@ var SurfaceWorker = (function (_super) {
         });
     };
     SurfaceWorker.prototype.createBlocks = function (res) {
+        var _this = this;
+        var block = [];
+        res.forEach(function (item, i) {
+            if (block.length === SurfaceWorker.BLOCK_SIZE) {
+                _this.dispatchEvent({
+                    type: WorkerEvent.XYZ_BLOCK,
+                    data: block
+                });
+                block = [];
+            }
+            block.push(item);
+        });
+        if (block.length) {
+            this.dispatchEvent({
+                type: WorkerEvent.XYZ_BLOCK,
+                data: block
+            });
+        }
+        this.dispatchEvent({
+            type: WorkerEvent.XYZ_LOADED
+        });
+        this.createColors(res);
+    };
+    SurfaceWorker.prototype.createColors = function (res) {
         var _this = this;
         var resolutionX = this.options.resolutionX;
         var resolutionY = this.options.resolutionY;
@@ -54,21 +128,14 @@ var SurfaceWorker = (function (_super) {
         var count = 0;
         var length = res.length;
         var buffer = [];
-        var block = [];
         res.forEach(function (item, i) {
             if (buffer.length === SurfaceWorker.BLOCK_SIZE) {
-                _this.dispatchEvent({
-                    type: WorkerEvent.XYZ_BLOCK,
-                    data: block
-                });
                 _this.dispatchEvent({
                     type: WorkerEvent.COLOR_BLOCK,
                     data: buffer
                 });
-                block = [];
                 buffer = [];
             }
-            block.push(item);
             var color, z = item.z;
             if (z > 0) {
                 color = lut.getColor(z);
@@ -87,26 +154,19 @@ var SurfaceWorker = (function (_super) {
         });
         if (buffer.length) {
             this.dispatchEvent({
-                type: WorkerEvent.XYZ_BLOCK,
-                data: block
-            });
-            this.dispatchEvent({
                 type: WorkerEvent.COLOR_BLOCK,
                 data: buffer
             });
         }
         this.dispatchEvent({
-            type: WorkerEvent.XYZ_LOADED
-        });
-        this.dispatchEvent({
             type: WorkerEvent.COLOR_LOADED
         });
     };
     return SurfaceWorker;
-}(THREE.EventDispatcher));
+}(EventDispatcher));
 SurfaceWorker.DEFAULT_MAX_DEPTH = 5000;
 SurfaceWorker.DEFAULT_MAX_ELEVATION = 2200;
-SurfaceWorker.BLOCK_SIZE = 800;
+SurfaceWorker.BLOCK_SIZE = 2000;
 
 /**
  * Javascript container for all things to do with configuration.
@@ -131,8 +191,8 @@ Config.preferences = {
         esriTemplate: "http://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&f=${format}&format=jpg&size=${size}",
         topoTemplate: "http://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/export?bbox=${bbox}&f=image&format=jpg&size=${width},${height}",
         resolutionX: 75,
-        imageWidth: 256,
-        hiResX: 700,
+        imageWidth: 128,
+        hiResX: 600,
         hiResImageWidth: 3000,
         hiResTopoWidth: 512,
         opacity: 1,
@@ -142,12 +202,11 @@ Config.preferences = {
         template: "http://dev.cossap.gadevs.ga/explorer-cossap-services/service/boreholes/features/${bbox}"
     },
     rocks: {
-        dataUrl: "http://www.ga.gov.au/geophysics-rockpropertypub-gws/ga_rock_properties_wfs/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=ga_rock_properties_wfs:remanent_magnetisation,ga_rock_properties_wfs:scalar_results&maxFeatures=50&outputFormat=application%2Fgml%2Bxml%3B+version%3D3.2&featureID={id}",
-        url: "/explorer-cossap-service/service/tile/",
-        x: 138,
-        y: -28,
-        zoom: 4,
-        maxCount: 300000
+        dataUrl: "http://www.ga.gov.au/geophysics-rockpropertypub-gws/ga_rock_properties_wfs/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=ga_rock_properties_wfs:remanent_magnetisation,ga_rock_properties_wfs:scalar_results&maxFeatures=50&outputFormat=application%2Fgml%2Bxml%3B+version%3D3.2&featureID=${id}",
+        url: "/explorer-cossap-services/service/rocks/",
+        summaryService: "summary?zoom=${zoom}&xmin=${xmin}&xmax=${xmax}&ymin=${ymin}&ymax=${ymax}",
+        maxCount: 300000,
+        circumferance: 40000000 // Roughly, we don't care that much.
     },
     worldView: {
         axisHelper: {

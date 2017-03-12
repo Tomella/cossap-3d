@@ -3041,10 +3041,12 @@ var World = (function () {
             },
             lights: {
                 ambient: {
-                    color: 0xcccccc
+                    color: 0xffffff,
+                    intensity: 1
                 },
                 directional: {
-                    color: 0x888888,
+                    color: 0xffffff,
+                    intensity: 0.4,
                     center: {
                         x: 0,
                         y: 0,
@@ -3313,13 +3315,13 @@ var World = (function () {
 
     World.prototype.addLights = function () {
         var data = this.options.lights;
-        this.lights[0] = new THREE.AmbientLight(data.ambient.color);
+        this.lights[0] = new THREE.AmbientLight(data.ambient.color, data.ambient.intensity);
         this.scene.add(this.lights[0]);
         var dir = data.directional;
-        this.lights[1] = new THREE.DirectionalLight(dir.color);
+        this.lights[1] = new THREE.DirectionalLight(dir.color, dir.intensity);
         this.lights[1].position.set(dir.center.x + dir.position.dx, dir.center.y + dir.position.dy, dir.center.z + dir.position.dz);
         this.scene.add(this.lights[1]);
-        this.lights[2] = new THREE.DirectionalLight(dir.color);
+        this.lights[2] = new THREE.DirectionalLight(dir.color, dir.intensity);
         this.lights[2].position.set(dir.center.x + dir.position.dx, dir.center.y + dir.position.dy, dir.center.z - dir.position.dz);
         this.scene.add(this.lights[2]);
     };
