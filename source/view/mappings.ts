@@ -1,4 +1,4 @@
-import { SurfaceSwitch } from "../surface/surfaceswitch";
+import { LayerSwitch } from "../layer/layerswitch";
 declare var Explorer3d;
 
 /**
@@ -8,6 +8,7 @@ export class Mappings {
    private _materials: any;
    private _radioMap: any;
    private _boreholes;
+   private _rocks;
    private _surfaceMaterialSelect = "image";
 
 
@@ -43,12 +44,17 @@ export class Mappings {
       });
    }
 
+   set rocks(rocks) {
+      this._rocks = rocks;
+      if (rocks) rocks.visible = this.dom.showHideBoreholes.checked;
+   }
+
    set boreholes(boreholes) {
       this._boreholes = boreholes;
       if (boreholes) boreholes.visible = this.dom.showHideBoreholes.checked;
    }
 
-   addMaterial(detail: SurfaceSwitch) {
+   addMaterial(detail: LayerSwitch) {
       let name = detail.name;
       let material = this._materials[name];
       let keys = Object.keys(this._materials);

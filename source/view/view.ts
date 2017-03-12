@@ -4,6 +4,7 @@ import { Bind } from "../app/bind";
 import { SurfaceEvent } from "../surface/surfaceevent";
 import { SurfaceManager } from "../surface/surfacemanager";
 import { BoreholesManager } from "../boreholes/boreholesmanager";
+import { RocksManager } from "../rocks/rocksmanager";
 declare var Explorer3d;
 declare var proj4;
 
@@ -11,7 +12,8 @@ export class View {
    factory;
    mappings: Mappings;
    surface: SurfaceManager;
-   boreholes;
+   boreholes: BoreholesManager;
+   rocks: RocksManager;
 
    constructor(public bbox: number[], public options: any) {
 
@@ -55,18 +57,34 @@ export class View {
 
 
       this.surface.parse().then(surface => {
-         this.boreholes = new BoreholesManager(Object.assign({bbox}, this.options.boreholes));
-         this.boreholes.parse().then(data => {
-            if (data) {
-               this.mappings.boreholes = data;
-               this.factory.extend(data, false);
-            }
-         }).catch(err => {
-            console.log("ERror boReholes");
-            console.log(err);
-         });
          // We got back a document so transform and show.
          this.factory.show(surface);
+      });
+   }
+
+   fetchRocks(bbox) {
+      this.rocks = new RocksManager(Object.assign({ bbox }, this.options.rocks));
+      this.rocks.parse().then(data => {
+         if (data) {
+            this.mappings.rocks = data;
+            this.factory.extend(data, false);
+         }
+      }).catch(err => {
+         console.log("ERror rocks");
+         console.log(err);
+      });
+   }
+
+   fetchBoreholes(bbox) {
+      this.boreholes = new BoreholesManager(Object.assign({ bbox }, this.options.boreholes));
+      this.boreholes.parse().then(data => {
+         if (data) {
+            this.mappings.boreholes = data;
+            this.factory.extend(data, false);
+         }
+      }).catch(err => {
+         console.log("ERror boReholes");
+         console.log(err);
       });
    }
 
