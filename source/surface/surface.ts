@@ -1,8 +1,9 @@
 declare var Explorer3d;
+import { Layer } from "../layer/layer";
 import { SurfaceEvent } from "./surfaceevent";
-import { SurfaceSwitch } from "./surfaceswitch";
+import { LayerSwitch } from "../layer/layerswitch";
 
-export class Surface extends THREE.EventDispatcher {
+export class Surface extends Layer {
    materials: any = {};
    surface;
    bbox: number[];
@@ -24,15 +25,15 @@ export class Surface extends THREE.EventDispatcher {
       });
 
       parser.addEventListener(Explorer3d.WcsEsriImageryParser.TEXTURE_LOADED_EVENT, event => {
-         this.dispatchEvent(event);
+         this.dispatchEvent({type: SurfaceEvent.MATERIAL_LOADED, data: new LayerSwitch("image", this, this.materials.image)});
       });
 
       return parser.parse().then(data => {
          this.surface = data;
          Explorer3d.Logger.log(seconds() + ": We have shown the document");
          setTimeout(() => {
-            this.fetchWireframeMaterial();
             this.fetchMaterials();
+            this.fetchWireframeMaterial();
          });
          return data;
       }).catch(function (err) {
@@ -48,21 +49,20 @@ export class Surface extends THREE.EventDispatcher {
          opacity: 0.7,
          wireframe: true
       });
-      this.dispatchEvent({type: SurfaceEvent.MATERIAL_LOADED, data: new SurfaceSwitch("wireframe", this, this.materials.wireframe)});
+      this.dispatchEvent({type: SurfaceEvent.MATERIAL_LOADED, data: new LayerSwitch("wireframe", this, this.materials.wireframe)});
    }
 
    fetchMaterials() {
       let points = this.surface.geometry.vertices;
       let resolutionX = this.options.resolutionX;
       this.materials.image = this.surface.material;
-      this.dispatchEvent({type: SurfaceEvent.MATERIAL_LOADED, data: new SurfaceSwitch("image", this, this.materials.image)});
    }
 
    set visible(on) {
       this.surface.visible = on;
    }
 
-   switchSurface(name: string, opacity: number) {
+   switch(name: string, opacity: number) {
       this.surface.visible = true;
       this.surface.material = this.materials[name];
       this.surface.material.opacity = opacity;
