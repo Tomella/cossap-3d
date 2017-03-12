@@ -1,15 +1,17 @@
+import { EventDispatcher } from "../../utils/eventdispatcher";
 import { WorkerEvent } from "../workerevent";
 
-export class SurfaceWorker extends THREE.EventDispatcher {
+export class SurfaceWorker extends EventDispatcher {
    static DEFAULT_MAX_DEPTH = 5000;
    static DEFAULT_MAX_ELEVATION = 2200;
-   static BLOCK_SIZE = 800;
+   static BLOCK_SIZE = 2000;
 
-   constructor(public options: {any, blocks?: number, resolutionX: number, resolutionY: number, maxDepth?: number, maxElevation?: number}) {
+   constructor(public options: {template: string, any, blocks?: number, resolutionX: number, resolutionY: number, maxDepth?: number, maxElevation?: number}) {
       super();
    }
 
    load(): Promise<any> {
+      let options = Object.assign({}, this.options, {}, {template: this.options.template + "&store=false"});
       let restLoader = new Elevation.WcsXyzLoader(this.options);
       console.log("Running surface worker");
 
@@ -21,6 +23,34 @@ export class SurfaceWorker extends THREE.EventDispatcher {
    }
 
    createBlocks(res) {
+      let block = [];
+
+      res.forEach( (item, i) => {
+         if (block.length === SurfaceWorker.BLOCK_SIZE) {
+            this.dispatchEvent({
+               type: WorkerEvent.XYZ_BLOCK,
+               data: block
+            });
+            block = [];
+         }
+         block.push(item);
+      });
+
+      if (block.length) {
+         this.dispatchEvent({
+            type: WorkerEvent.XYZ_BLOCK,
+            data: block
+         });
+      }
+
+      this.dispatchEvent({
+         type: WorkerEvent.XYZ_LOADED
+      });
+
+      this.createColors(res);
+   }
+
+   createColors(res) {
       let resolutionX = this.options.resolutionX;
       let resolutionY = this.options.resolutionY;
 
@@ -38,23 +68,15 @@ export class SurfaceWorker extends THREE.EventDispatcher {
       let count = 0;
       let length = res.length;
       let buffer = [];
-      let block = [];
 
       res.forEach( (item, i) => {
          if (buffer.length === SurfaceWorker.BLOCK_SIZE) {
             this.dispatchEvent({
-               type: WorkerEvent.XYZ_BLOCK,
-               data: block
-            });
-            this.dispatchEvent({
                type: WorkerEvent.COLOR_BLOCK,
                data: buffer
             });
-            block = [];
             buffer = [];
          }
-
-         block.push(item);
 
          let color, z = item.z;
 
@@ -75,18 +97,11 @@ export class SurfaceWorker extends THREE.EventDispatcher {
 
       if (buffer.length) {
          this.dispatchEvent({
-            type: WorkerEvent.XYZ_BLOCK,
-            data: block
-         });
-         this.dispatchEvent({
             type: WorkerEvent.COLOR_BLOCK,
             data: buffer
          });
       }
 
-      this.dispatchEvent({
-         type: WorkerEvent.XYZ_LOADED
-      });
       this.dispatchEvent({
          type: WorkerEvent.COLOR_LOADED
       });

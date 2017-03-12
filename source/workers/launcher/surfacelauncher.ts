@@ -1,7 +1,7 @@
 import { Config } from "../../app/config";
 import { Surface } from "../../surface/surface";
 import { SurfaceEvent } from "../../surface/surfaceevent";
-import { SurfaceSwitch } from "../../surface/surfaceswitch";
+import { LayerSwitch } from "../../layer/layerswitch";
 import { WorkerEvent } from "../workerevent";
 declare var Explorer3d;
 
@@ -11,7 +11,7 @@ export class SurfaceLauncher extends Surface {
    bbox: number[];
    aspectRatio: number;
 
-   private switches: SurfaceSwitch[] = [];
+   private switches: LayerSwitch[] = [];
    private materialComplete = false;
    private geometry;
    private startMilli: number;
@@ -45,6 +45,9 @@ export class SurfaceLauncher extends Surface {
       let heapMapState;
       let geometryState;
 
+      this.createImageMaterial();
+      this.createTopoMaterial(options);
+
       worker.addEventListener("message", message => {
          let data = message.data;
          if (data.type === WorkerEvent.XYZ_LOADED) {
@@ -67,8 +70,6 @@ export class SurfaceLauncher extends Surface {
 
       heapMapState = this.prepareHeatMapMaterial(options);
       geometryState = this.prepareGeometry();
-      this.createImageMaterial();
-      this.createTopoMaterial(options);
    }
 
    prepareGeometry(): {geometry, count} {
@@ -140,12 +141,12 @@ export class SurfaceLauncher extends Surface {
       });
 
       this.materials.heatmap = material;
-      this.pushMaterialLoadedEvent(new SurfaceSwitch("heatmap", this, material));
+      this.pushMaterialLoadedEvent(new LayerSwitch("heatmap", this, material));
       console.log("createHeatmapMaterial end: " + this.since());
    }
 
 
-   private pushMaterialLoadedEvent(data?: SurfaceSwitch): void {
+   private pushMaterialLoadedEvent(data?: LayerSwitch): void {
       if (data) {
          this.switches.push(data);
       }
@@ -177,7 +178,7 @@ export class SurfaceLauncher extends Surface {
          bbox: data.bbox,
          opacity: 0.7,
          onLoad: () => {
-            self.pushMaterialLoadedEvent(new SurfaceSwitch("topo", self, self.materials.topo));
+            self.pushMaterialLoadedEvent(new LayerSwitch("topo", self, self.materials.topo));
          }
       });
    }
@@ -196,7 +197,7 @@ export class SurfaceLauncher extends Surface {
       let material = this.materials.image = new THREE.MeshPhongMaterial({
          map: loader.load(url, event => {
             this.materialComplete = true;
-            this.pushMaterialLoadedEvent(new SurfaceSwitch("image", this, material));
+            this.pushMaterialLoadedEvent(new LayerSwitch("image", this, material));
             this.checkComplete();
          }),
          transparent: true,
