@@ -59,6 +59,22 @@ app.all('/service/*', function(req, res, next) {
     return req.pipe(r).pipe(res);
 });
 
+app.get('/explorer-cossap-services/*', function (req, res, next) {
+    request.get({
+        url: "http://192.168.0.24" + req.url,
+        headers: req.headers,
+        encoding: null,
+        proxy: proxy
+    }, function (error, response, body) {
+        var code = 500;
+        if (response) {
+            code = response.statusCode;
+            res.headers = response.headers;
+        }
+        res.status(code).send(body);
+    });
+});
+
 app.listen(port, function(err){
 	console.log("running server on port "+ port);
 });
