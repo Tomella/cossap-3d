@@ -2,6 +2,7 @@ import { RocksLoader } from "./rocksloader";
 declare var proj4;
 
 export class RocksManager {
+   static DEFAULT_CIRCUMFERENCE = 40075000;
    rocks: RocksLoader;
    bbox3857: number[];
    points;
@@ -11,9 +12,12 @@ export class RocksManager {
       this.bbox3857 = bboxToEpsg3857(this.options.bbox);
 
       let length = longestSide(this.bbox3857);
-      let ratio = this.options.circumference / length;
+      let zoomZero = (options.circumference ? options.circumference : RocksManager.DEFAULT_CIRCUMFERENCE) / 2;
+
+
+      this.zoom = Math.log(zoomZero / length);
       console.log("Mr rocks here");
-      console.log({length, ratio, options});
+      console.log(this.zoom);
 
    }
 

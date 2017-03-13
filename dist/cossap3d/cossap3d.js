@@ -753,9 +753,10 @@ var RocksManager = (function () {
         this.options = options;
         this.bbox3857 = bboxToEpsg3857(this.options.bbox);
         var length = longestSide(this.bbox3857);
-        var ratio = this.options.circumference / length;
+        var zoomZero = (options.circumference ? options.circumference : RocksManager.DEFAULT_CIRCUMFERENCE) / 2;
+        this.zoom = Math.log(zoomZero / length);
         console.log("Mr rocks here");
-        console.log({ length: length, ratio: ratio, options: options });
+        console.log(this.zoom);
     }
     RocksManager.prototype.parse = function () {
         this.rocks = new RocksLoader(this.options);
@@ -767,6 +768,7 @@ var RocksManager = (function () {
     };
     return RocksManager;
 }());
+RocksManager.DEFAULT_CIRCUMFERENCE = 40075000;
 function bboxToEpsg3857(bbox) {
     var ll = proj4("EPSG:4326", "EPSG:3857", [bbox[0], bbox[1]]);
     var ur = proj4("EPSG:4326", "EPSG:3857", [bbox[2], bbox[3]]);
@@ -816,6 +818,7 @@ var View = (function () {
         this.surface.parse().then(function (surface) {
             // We got back a document so transform and show.
             _this.factory.show(surface);
+            _this.fetchBoreholes(bbox);
         });
     };
     View.prototype.fetchRocks = function (bbox) {

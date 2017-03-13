@@ -59,6 +59,7 @@ export class View {
       this.surface.parse().then(surface => {
          // We got back a document so transform and show.
          this.factory.show(surface);
+         this.fetchBoreholes(bbox);
       });
    }
 
