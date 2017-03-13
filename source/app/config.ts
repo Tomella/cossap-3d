@@ -19,7 +19,7 @@ export class Config {
          esriTemplate: "http://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&f=${format}&format=jpg&size=${size}",
          topoTemplate: "http://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/export?bbox=${bbox}&f=image&format=jpg&size=${width},${height}",
          resolutionX: 75,
-         imageWidth: 128,
+         imageWidth: 256,
          hiResX: 600,
          hiResImageWidth: 3000,
          hiResTopoWidth: 512,
