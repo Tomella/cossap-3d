@@ -60,14 +60,18 @@
 
          </div>
       </div>
+      <hr/>
 
-      <div class="options-list">
-         <h4>Boreholes Properties</h4>
-         <label for="borehole_visibility">Show/Hide Boreholes</label>
-         <input type="checkbox" id="showHideBoreholes" checked="checked" style="float:right">
-         <br>
-
+      <div>
+         <label for="borehole_visibility" style="width:16em; display:inline-block">Show/Hide Boreholes</label>
+         <input type="checkbox" id="showHideBoreholes" checked="checked">
       </div>
+
+      <div>
+         <label for="rocks_visibility" style="width:16em; display:inline-block">Show/Hide Rock Properties</label>
+         <input type="checkbox" id="showHideRocks" checked="checked">
+      </div>
+
    </div>
 
    <div id="target" class="c3d-target"></div>
@@ -106,7 +110,6 @@
    <script type="text/javascript">
       Cossap3d.bootstrap();
    </script>
-
    <!-- Our example code -->
 </body>
 
