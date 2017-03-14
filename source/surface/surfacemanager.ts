@@ -20,7 +20,7 @@ export class SurfaceManager extends THREE.EventDispatcher {
       console.log(this.options);
       this.surface.addEventListener(Explorer3d.WcsEsriImageryParser.BBOX_CHANGED_EVENT, event => {
          this.dispatchEvent(event);
-         setTimeout(() => this.loadHiRes(event.data), 500);
+         this.loadHiRes(event.data);
       });
 
       this.surface.addEventListener(SurfaceEvent.MATERIAL_LOADED, event => {
@@ -64,6 +64,7 @@ export class SurfaceManager extends THREE.EventDispatcher {
             imageHeight: imageHeight
          }
       );
+
       this.hiResSurface = new SurfaceLauncher(options);
       // this.hiResSurface = new Surface(options);
       this.hiResSurface.addEventListener(SurfaceEvent.MATERIAL_LOADED, event => {

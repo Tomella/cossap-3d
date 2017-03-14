@@ -1,14 +1,16 @@
-import { CossapCameraPositioner } from "./cossapcamerapositioner";
-import { Mappings } from "./mappings";
 import { Bind } from "../app/bind";
+import { BoreholesManager } from "../boreholes/boreholesmanager";
+import { CossapCameraPositioner } from "./cossapcamerapositioner";
+import { ElevationLookup } from "../elevation/elevationlookup";
+import { Mappings } from "./mappings";
+import { RocksManager } from "../rocks/rocksmanager";
 import { SurfaceEvent } from "../surface/surfaceevent";
 import { SurfaceManager } from "../surface/surfacemanager";
-import { BoreholesManager } from "../boreholes/boreholesmanager";
-import { RocksManager } from "../rocks/rocksmanager";
 declare var Explorer3d;
 declare var proj4;
 
 export class View {
+   elevationLookup: ElevationLookup;
    factory;
    mappings: Mappings;
    surface: SurfaceManager;
@@ -45,10 +47,13 @@ export class View {
 
       options.imageHeight = Math.round(options.imageWidth * (options.bbox[3] - options.bbox[1]) / (options.bbox[2] - options.bbox[0]));
 
+      this.elevationLookup = new ElevationLookup();
+
       this.surface = new SurfaceManager(options);
       this.surface.addEventListener(SurfaceEvent.SURFACE_LOADED, event => {
          let surface = event.data;
          this.factory.extend(surface, false);
+         this.elevationLookup.setMesh(surface);
       });
 
       this.surface.addEventListener(SurfaceEvent.MATERIAL_LOADED, event => {
@@ -60,16 +65,18 @@ export class View {
          // We got back a document so transform and show.
          this.factory.show(surface);
          this.fetchBoreholes(bbox);
+         this.fetchRocks(bbox);
       });
    }
 
    fetchRocks(bbox) {
-      this.rocks = new RocksManager(Object.assign({ bbox }, this.options.rocks));
+      this.rocks = new RocksManager(Object.assign({ bbox, elevationLookup: this.elevationLookup }, this.options.rocks));
       this.rocks.parse().then(data => {
+         this.mappings.rocks = data;
          if (data) {
-            this.mappings.rocks = data;
             this.factory.extend(data, false);
          }
+         // window["larry"] = this.factory;
       }).catch(err => {
          console.log("ERror rocks");
          console.log(err);

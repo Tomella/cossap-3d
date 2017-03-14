@@ -18,6 +18,7 @@ export class Mappings {
       this.mapVerticalExagerate();
       this.mapSurfaceOpacity();
       this.mapShowHideBoreholes();
+      this.mapShowHideRocks();
       this.mapSurfaceMaterialRadio();
    }
 
@@ -46,7 +47,9 @@ export class Mappings {
 
    set rocks(rocks) {
       this._rocks = rocks;
-      if (rocks) rocks.visible = this.dom.showHideBoreholes.checked;
+      if (rocks) {
+         rocks.visible = this.dom.showHideRocks.checked;
+      }
    }
 
    set boreholes(boreholes) {
@@ -101,6 +104,16 @@ export class Mappings {
       element.addEventListener("change", () => {
          if (this._boreholes) {
             this._boreholes.visible = this.dom.showHideBoreholes.checked;
+         };
+      });
+   }
+
+   mapShowHideRocks() {
+      let element = this.dom.showHideRocks;
+
+      element.addEventListener("change", () => {
+         if (this._rocks) {
+            this._rocks.visible = this.dom.showHideRocks.checked;
          };
       });
    }

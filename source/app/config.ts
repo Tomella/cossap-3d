@@ -31,10 +31,11 @@ export class Config {
       },
       rocks: {
          dataUrl: "http://www.ga.gov.au/geophysics-rockpropertypub-gws/ga_rock_properties_wfs/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=ga_rock_properties_wfs:remanent_magnetisation,ga_rock_properties_wfs:scalar_results&maxFeatures=50&outputFormat=application%2Fgml%2Bxml%3B+version%3D3.2&featureID=${id}",
-         url: "/explorer-cossap-services/service/rocks/",
+         baseUrl: "/explorer-cossap-services/service/rocks/",
          summaryService: "summary?zoom=${zoom}&xmin=${xmin}&xmax=${xmax}&ymin=${ymin}&ymax=${ymax}",
-         maxCount: 300000,
-         circumferance: 40000000 // Roughly, we don't care that much.
+         featuresService: "features/",
+         queryService: "query/",
+         maxCount: 300000
       },
       worldView: {
          axisHelper: {

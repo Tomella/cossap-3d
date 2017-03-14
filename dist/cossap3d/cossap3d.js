@@ -130,6 +130,72 @@ Storage.BBOX_KEY = "cossap3d.bbox";
 Storage.BBOX_EVENT = "bbox.change";
 Storage.STATE_KEY = "cossap3d.state";
 
+/**
+ * Literal bindings between UI and Javascript friendly accessors.
+ */
+var Bind = (function () {
+    function Bind() {
+    }
+    return Bind;
+}());
+// Keep all the DOM stuff together. Make the abstraction to the HTML here
+Bind.dom = {
+    target: document.getElementById("target"),
+    body: document.body,
+    verticalExaggeration: document.getElementById("verticalExaggeration"),
+    verticalExaggerationView: document.getElementById("verticalExaggerationValue"),
+    surfaceOpacity: document.getElementById("surfaceOpacity"),
+    showHideBoreholes: document.getElementById("showHideBoreholes"),
+    surfaceMaterialRadio: document.getElementsByName("surfaceMaterialRadio"),
+    invalidParameter: document.getElementById("invalidParameter"),
+    showHideRocks: document.getElementById("showHideRocks")
+};
+
+// Given a bbox, return a 2d grid with the same x, y coordinates plus a z-coordinate as returned by the 1d TerrainLoader.
+var BoreholesLoader = (function () {
+    function BoreholesLoader(options) {
+        this.options = options;
+    }
+    BoreholesLoader.prototype.load = function () {
+        var options = this.options;
+        var location = this.options.template.replace("${bbox}", this.options.bbox.join(","));
+        var loader = new Elevation.HttpTextLoader(location);
+        return loader.load().then(function (str) { return JSON.parse(str); });
+    };
+    return BoreholesLoader;
+}());
+
+var BoreholesManager = (function () {
+    function BoreholesManager(options) {
+        this.options = options;
+    }
+    BoreholesManager.prototype.parse = function () {
+        var _this = this;
+        this.boreholes = new BoreholesLoader(this.options);
+        return this.boreholes.load().then(function (data) {
+            if (!data || !data.length) {
+                return null;
+            }
+            var lineMaterial = new THREE.LineBasicMaterial({ color: 0xffaaaa, linewidth: 1 });
+            var lineGeom = new THREE.Geometry();
+            var bbox = _this.options.bbox;
+            data.filter(function (hole) { return hole.lon > bbox[0] && hole.lon <= bbox[2] && hole.lat > bbox[1] && hole.lat <= bbox[3]; })
+                .forEach(function (hole) {
+                var coord = proj4("EPSG:4283", "EPSG:3857", [hole.lon, hole.lat]);
+                var length = hole.length != null ? hole.length : 10;
+                var elevation = hole.elevation < -90000 ? 0 : hole.elevation;
+                lineGeom.vertices.push(new THREE.Vector3(coord[0], coord[1], elevation));
+                lineGeom.vertices.push(new THREE.Vector3(coord[0], coord[1], elevation - length));
+            });
+            lineGeom.computeBoundingSphere();
+            return _this.lines = new THREE.LineSegments(lineGeom, lineMaterial);
+        });
+    };
+    BoreholesManager.prototype.destroy = function () {
+    };
+    return BoreholesManager;
+}());
+
 var CossapCameraPositioner = (function (_super) {
     __extends(CossapCameraPositioner, _super);
     function CossapCameraPositioner() {
@@ -152,6 +218,50 @@ var CossapCameraPositioner = (function (_super) {
     return CossapCameraPositioner;
 }(Explorer3d.CameraPositioner));
 
+var ElevationLookup = (function () {
+    function ElevationLookup(mesh) {
+        this.mesh = mesh;
+        if (!mesh) {
+            this.callbacks = [];
+        }
+    }
+    ElevationLookup.prototype.setMesh = function (mesh) {
+        this.mesh = mesh;
+        if (this.callbacks) {
+            this.callbacks.forEach(function (callback) {
+                callback(mesh);
+            });
+            this.callbacks = null;
+        }
+    };
+    ElevationLookup.prototype.lookup = function (point) {
+        var _this = this;
+        if (this.mesh) {
+            return new Promise(function (resolve, reject) {
+                resolve(getElevation(_this.mesh, point));
+            });
+        }
+        else {
+            return new Promise(function (resolve, reject) {
+                _this.callbacks.push(function (mesh) {
+                    console.log("Calling back");
+                    resolve(getElevation(mesh, point));
+                });
+            });
+        }
+    };
+    return ElevationLookup;
+}());
+function getElevation(mesh, point) {
+    var raycaster = new THREE.Raycaster();
+    var origin = new THREE.Vector3(point[0], point[1], 50000);
+    var direction = new THREE.Vector3(0, 0, -1);
+    raycaster.set(origin, direction);
+    var result = raycaster.intersectObject(mesh);
+    var z = result.length ? result[0].point.z : 0;
+    return z;
+}
+
 /**
  * This is the bridge between the UI and the model
  */
@@ -165,6 +275,7 @@ var Mappings = (function () {
         this.mapVerticalExagerate();
         this.mapSurfaceOpacity();
         this.mapShowHideBoreholes();
+        this.mapShowHideRocks();
         this.mapSurfaceMaterialRadio();
     }
     Mappings.prototype.mapVerticalExagerate = function () {
@@ -191,8 +302,9 @@ var Mappings = (function () {
     Object.defineProperty(Mappings.prototype, "rocks", {
         set: function (rocks) {
             this._rocks = rocks;
-            if (rocks)
-                rocks.visible = this.dom.showHideBoreholes.checked;
+            if (rocks) {
+                rocks.visible = this.dom.showHideRocks.checked;
+            }
         },
         enumerable: true,
         configurable: true
@@ -252,28 +364,144 @@ var Mappings = (function () {
             
         });
     };
+    Mappings.prototype.mapShowHideRocks = function () {
+        var _this = this;
+        var element = this.dom.showHideRocks;
+        element.addEventListener("change", function () {
+            if (_this._rocks) {
+                _this._rocks.visible = _this.dom.showHideRocks.checked;
+            }
+            
+        });
+    };
     return Mappings;
 }());
 
-/**
- * Literal bindings between UI and Javascript friendly accessors.
- */
-var Bind = (function () {
-    function Bind() {
+var RocksContainer = (function () {
+    function RocksContainer(feature, options) {
+        this.feature = feature;
+        this.options = options;
+        this.container = new THREE.Object3D();
+        this.id = feature.id;
+        var zoom = +this.id.split("/")[0];
+        this.widthFactor = 3000 / Math.pow(2, zoom);
+        this.createCluster();
     }
-    return Bind;
+    RocksContainer.prototype.createCluster = function () {
+        var _this = this;
+        var xy = this.feature.geometry.coordinates;
+        var texture = new THREE.TextureLoader().load("resources/imgs/rock_small.png");
+        var material = new THREE.MeshPhongMaterial({
+            map: texture,
+            side: THREE.DoubleSide
+        });
+        var radius = this.widthFactor * (100 + Math.pow(this.count, 0.45));
+        var object = new THREE.Mesh(new THREE.CylinderBufferGeometry(radius, radius, radius * 1.2, 50), material);
+        object.rotation.x = Math.PI / 2;
+        if (this.options.elevationLookup) {
+            this.options.elevationLookup.lookup(xy).then(function (z) {
+                object.position.set(xy[0], xy[1], z);
+                _this.container.add(object);
+                _this.createparticles();
+            });
+        }
+        else {
+            object.position.set(xy[0], xy[1], 2000); // + radius);
+            this.container.add(object);
+            this.createparticles();
+        }
+    };
+    RocksContainer.prototype.createparticles = function () {
+    };
+    Object.defineProperty(RocksContainer.prototype, "count", {
+        get: function () {
+            return this.feature.properties["count"];
+        },
+        enumerable: true,
+        configurable: true
+    });
+    RocksContainer.prototype.create = function () {
+        return this.container;
+    };
+    return RocksContainer;
 }());
-// Keep all the DOM stuff together. Make the abstraction to the HTML here
-Bind.dom = {
-    target: document.getElementById("target"),
-    body: document.body,
-    verticalExaggeration: document.getElementById("verticalExaggeration"),
-    verticalExaggerationView: document.getElementById("verticalExaggerationValue"),
-    surfaceOpacity: document.getElementById("surfaceOpacity"),
-    showHideBoreholes: document.getElementById("showHideBoreholes"),
-    surfaceMaterialRadio: document.getElementsByName("surfaceMaterialRadio"),
-    invalidParameter: document.getElementById("invalidParameter")
-};
+
+var RocksLoader = (function () {
+    function RocksLoader(options) {
+        this.options = options;
+    }
+    // summary?zoom=${zoom}&xmin=${xmin}&xmax=${xmax}&ymin=${ymin}&ymax=${ymax}
+    RocksLoader.prototype.loadSummary = function () {
+        var options = this.options;
+        var bbox = options.bbox;
+        var location = this.options.template
+            .replace("${xmin}", bbox[0])
+            .replace("${ymin}", bbox[1])
+            .replace("${xmax}", bbox[2])
+            .replace("${ymax}", bbox[3])
+            .replace("${zoom}", options.zoom);
+        var loader = new Elevation.HttpTextLoader(location);
+        return loader.load().then(function (str) { return JSON.parse(str); });
+    };
+    return RocksLoader;
+}());
+
+/**
+ * Shows rock properties. All layers are contained in a single THREE.Object3d
+ * and this manages them.
+ * It loads up a summary,
+ * Creates a container
+ * Draws spheres representing each of the cells or tiles,
+ * For any counts below a threshold, it goes off and fetches them.
+ * As each tile shows up it draws the points and hides the sphere.
+ */
+var RocksManager = (function () {
+    function RocksManager(options) {
+        this.options = options;
+        var degrees = longestSide(options.bbox);
+        this.zoom = Math.ceil(Math.log(RocksManager.CELL_ZERO_DEGREES / degrees)) + 3;
+    }
+    RocksManager.prototype.parse = function () {
+        var _this = this;
+        var bbox = this.options.bbox;
+        var rocks = new RocksLoader({
+            template: this.options.baseUrl + this.options.summaryService,
+            zoom: this.zoom,
+            bbox: bbox
+        });
+        return rocks.loadSummary().then(function (data) {
+            if (data && data.features && data.features.length) {
+                _this.containers = data.features.map(function (feature) { return new RocksContainer(featureToEpsg3857(feature), _this.options); });
+                _this.container = new THREE.Object3D();
+                _this.containers.forEach(function (container) {
+                    _this.container.add(container.create());
+                });
+                return _this.container;
+            }
+            else {
+                console.log("rocks.load");
+                console.log(data);
+                return null;
+            }
+        });
+    };
+    RocksManager.prototype.destroy = function () {
+    };
+    return RocksManager;
+}());
+RocksManager.CELL_ZERO_DEGREES = 180;
+function featureToEpsg3857(feature) {
+    var point = feature.geometry.coordinates;
+    feature.properties["point"] = [point[0], point[1]];
+    feature.geometry.coordinates = pointToEpsg3857(point);
+    return feature;
+}
+function pointToEpsg3857(point) {
+    return proj4("EPSG:4326", "EPSG:3857", [point[0], point[1]]);
+}
+function longestSide(bbox) {
+    return Math.max(bbox[2] - bbox[0], bbox[3] - bbox[1]);
+}
 
 var SurfaceEvent = (function () {
     function SurfaceEvent() {
@@ -413,10 +641,11 @@ Config.preferences = {
     },
     rocks: {
         dataUrl: "http://www.ga.gov.au/geophysics-rockpropertypub-gws/ga_rock_properties_wfs/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=ga_rock_properties_wfs:remanent_magnetisation,ga_rock_properties_wfs:scalar_results&maxFeatures=50&outputFormat=application%2Fgml%2Bxml%3B+version%3D3.2&featureID=${id}",
-        url: "/explorer-cossap-services/service/rocks/",
+        baseUrl: "/explorer-cossap-services/service/rocks/",
         summaryService: "summary?zoom=${zoom}&xmin=${xmin}&xmax=${xmax}&ymin=${ymin}&ymax=${ymax}",
-        maxCount: 300000,
-        circumferance: 40000000 // Roughly, we don't care that much.
+        featuresService: "features/",
+        queryService: "query/",
+        maxCount: 300000
     },
     worldView: {
         axisHelper: {
@@ -639,7 +868,7 @@ var SurfaceManager = (function (_super) {
         console.log(this.options);
         this.surface.addEventListener(Explorer3d.WcsEsriImageryParser.BBOX_CHANGED_EVENT, function (event) {
             _this.dispatchEvent(event);
-            setTimeout(function () { return _this.loadHiRes(event.data); }, 500);
+            _this.loadHiRes(event.data);
         });
         this.surface.addEventListener(SurfaceEvent.MATERIAL_LOADED, function (event) {
             _this.dispatchEvent(event);
@@ -693,91 +922,6 @@ var SurfaceManager = (function (_super) {
     return SurfaceManager;
 }(THREE.EventDispatcher));
 
-// Given a bbox, return a 2d grid with the same x, y coordinates plus a z-coordinate as returned by the 1d TerrainLoader.
-var BoreholesLoader = (function () {
-    function BoreholesLoader(options) {
-        this.options = options;
-    }
-    BoreholesLoader.prototype.load = function () {
-        var options = this.options;
-        var location = this.options.template.replace("${bbox}", this.options.bbox.join(","));
-        var loader = new Elevation.HttpTextLoader(location);
-        return loader.load().then(function (str) { return JSON.parse(str); });
-    };
-    return BoreholesLoader;
-}());
-
-var BoreholesManager = (function () {
-    function BoreholesManager(options) {
-        this.options = options;
-    }
-    BoreholesManager.prototype.parse = function () {
-        var _this = this;
-        this.boreholes = new BoreholesLoader(this.options);
-        return this.boreholes.load().then(function (data) {
-            if (!data || !data.length) {
-                return null;
-            }
-            var lineMaterial = new THREE.LineBasicMaterial({ color: 0xffaaaa, linewidth: 1 });
-            var lineGeom = new THREE.Geometry();
-            var bbox = _this.options.bbox;
-            data.filter(function (hole) { return hole.lon > bbox[0] && hole.lon <= bbox[2] && hole.lat > bbox[1] && hole.lat <= bbox[3]; })
-                .forEach(function (hole) {
-                var coord = proj4("EPSG:4283", "EPSG:3857", [hole.lon, hole.lat]);
-                var length = hole.length != null ? hole.length : 10;
-                var elevation = hole.elevation < -90000 ? 0 : hole.elevation;
-                lineGeom.vertices.push(new THREE.Vector3(coord[0], coord[1], elevation));
-                lineGeom.vertices.push(new THREE.Vector3(coord[0], coord[1], elevation - length));
-            });
-            lineGeom.computeBoundingSphere();
-            return _this.lines = new THREE.LineSegments(lineGeom, lineMaterial);
-        });
-    };
-    BoreholesManager.prototype.destroy = function () {
-    };
-    return BoreholesManager;
-}());
-
-var RocksLoader = (function () {
-    function RocksLoader(options) {
-        this.options = options;
-    }
-    RocksLoader.prototype.load = function () {
-        return null;
-    };
-    return RocksLoader;
-}());
-
-var RocksManager = (function () {
-    function RocksManager(options) {
-        this.options = options;
-        this.bbox3857 = bboxToEpsg3857(this.options.bbox);
-        var length = longestSide(this.bbox3857);
-        var zoomZero = (options.circumference ? options.circumference : RocksManager.DEFAULT_CIRCUMFERENCE) / 2;
-        this.zoom = Math.log(zoomZero / length);
-        console.log("Mr rocks here");
-        console.log(this.zoom);
-    }
-    RocksManager.prototype.parse = function () {
-        this.rocks = new RocksLoader(this.options);
-        return this.rocks.load().then(function (data) {
-            return null;
-        });
-    };
-    RocksManager.prototype.destroy = function () {
-    };
-    return RocksManager;
-}());
-RocksManager.DEFAULT_CIRCUMFERENCE = 40075000;
-function bboxToEpsg3857(bbox) {
-    var ll = proj4("EPSG:4326", "EPSG:3857", [bbox[0], bbox[1]]);
-    var ur = proj4("EPSG:4326", "EPSG:3857", [bbox[2], bbox[3]]);
-    return [ll[0], ll[1], ur[0], ur[1]];
-}
-function longestSide(bbox) {
-    return Math.max(bbox[0] - bbox[2], bbox[1] - bbox[3]);
-}
-
 var View = (function () {
     function View(bbox, options) {
         this.bbox = bbox;
@@ -807,10 +951,12 @@ var View = (function () {
         options.bbox.push(ur[0]);
         options.bbox.push(ur[1]);
         options.imageHeight = Math.round(options.imageWidth * (options.bbox[3] - options.bbox[1]) / (options.bbox[2] - options.bbox[0]));
+        this.elevationLookup = new ElevationLookup();
         this.surface = new SurfaceManager(options);
         this.surface.addEventListener(SurfaceEvent.SURFACE_LOADED, function (event) {
             var surface = event.data;
             _this.factory.extend(surface, false);
+            _this.elevationLookup.setMesh(surface);
         });
         this.surface.addEventListener(SurfaceEvent.MATERIAL_LOADED, function (event) {
             _this.mappings.addMaterial(event.data);
@@ -819,16 +965,18 @@ var View = (function () {
             // We got back a document so transform and show.
             _this.factory.show(surface);
             _this.fetchBoreholes(bbox);
+            _this.fetchRocks(bbox);
         });
     };
     View.prototype.fetchRocks = function (bbox) {
         var _this = this;
-        this.rocks = new RocksManager(Object.assign({ bbox: bbox }, this.options.rocks));
+        this.rocks = new RocksManager(Object.assign({ bbox: bbox, elevationLookup: this.elevationLookup }, this.options.rocks));
         this.rocks.parse().then(function (data) {
+            _this.mappings.rocks = data;
             if (data) {
-                _this.mappings.rocks = data;
                 _this.factory.extend(data, false);
             }
+            // window["larry"] = this.factory;
         }).catch(function (err) {
             console.log("ERror rocks");
             console.log(err);

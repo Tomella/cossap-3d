@@ -12,6 +12,7 @@ export class Bind {
       surfaceOpacity: document.getElementById("surfaceOpacity"),
       showHideBoreholes: document.getElementById("showHideBoreholes"),
       surfaceMaterialRadio: document.getElementsByName("surfaceMaterialRadio"),
-      invalidParameter: document.getElementById("invalidParameter")
+      invalidParameter: document.getElementById("invalidParameter"),
+      showHideRocks: document.getElementById("showHideRocks")
    };
 }
