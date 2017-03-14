@@ -60,11 +60,13 @@ app.all('/service/*', function(req, res, next) {
 });
 
 app.get('/explorer-cossap-services/*', function (req, res, next) {
+    let url = "http://www.ga.gov.au" + req.url.replace("cossap-services", "web");
+    console.log(url);
+
     request.get({
-        url: "http://192.168.0.24" + req.url,
+        url: url,
         headers: req.headers,
-        encoding: null,
-        proxy: proxy
+        encoding: null
     }, function (error, response, body) {
         var code = 500;
         if (response) {
