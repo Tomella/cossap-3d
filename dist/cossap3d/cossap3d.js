@@ -234,6 +234,22 @@ var ElevationLookup = (function () {
             this.callbacks = null;
         }
     };
+    ElevationLookup.prototype.intersect = function (point) {
+        var _this = this;
+        if (this.mesh) {
+            return new Promise(function (resolve, reject) {
+                resolve(getElevation(_this.mesh, point));
+            });
+        }
+        else {
+            return new Promise(function (resolve, reject) {
+                _this.callbacks.push(function (mesh) {
+                    console.log("Calling back");
+                    resolve(getIntersection(mesh, point));
+                });
+            });
+        }
+    };
     ElevationLookup.prototype.lookup = function (point) {
         var _this = this;
         if (this.mesh) {
@@ -252,13 +268,17 @@ var ElevationLookup = (function () {
     };
     return ElevationLookup;
 }());
-function getElevation(mesh, point) {
+function getIntersection(mesh, point) {
     var raycaster = new THREE.Raycaster();
     var origin = new THREE.Vector3(point[0], point[1], 50000);
     var direction = new THREE.Vector3(0, 0, -1);
     raycaster.set(origin, direction);
     var result = raycaster.intersectObject(mesh);
-    var z = result.length ? result[0].point.z : 0;
+    return result.length ? result[0] : null;
+}
+function getElevation(mesh, point) {
+    var intersection = getIntersection(mesh, point);
+    var z = intersection ? intersection.point.z : 0;
     return z;
 }
 
@@ -389,26 +409,34 @@ var RocksContainer = (function () {
     }
     RocksContainer.prototype.createCluster = function () {
         var _this = this;
+        // Use the canonical EPSG:3857 point
         var xy = this.feature.geometry.coordinates;
-        var texture = new THREE.TextureLoader().load("resources/imgs/rock_small.png");
-        var material = new THREE.MeshPhongMaterial({
-            map: texture,
-            side: THREE.DoubleSide
-        });
-        var radius = this.widthFactor * (100 + Math.pow(this.count, 0.45));
-        var object = new THREE.Mesh(new THREE.CylinderBufferGeometry(radius, radius, radius * 1.2, 50), material);
-        object.rotation.x = Math.PI / 2;
+        var count = this.count;
+        var widthFactor = this.widthFactor;
+        var container = this.container;
         if (this.options.elevationLookup) {
-            this.options.elevationLookup.lookup(xy).then(function (z) {
-                object.position.set(xy[0], xy[1], z);
-                _this.container.add(object);
+            this.options.elevationLookup.intersect(xy).then(function (intersection) {
+                if (intersection) {
+                    createCluster(xy, intersection.point.z);
+                }
                 _this.createparticles();
             });
         }
         else {
-            object.position.set(xy[0], xy[1], 2000); // + radius);
-            this.container.add(object);
+            createCluster(xy, 2000);
             this.createparticles();
+        }
+        function createCluster(xy, z) {
+            var texture = new THREE.TextureLoader().load("resources/imgs/red_brick.jpg");
+            var material = new THREE.MeshPhongMaterial({
+                map: texture,
+                side: THREE.DoubleSide
+            });
+            var radius = widthFactor * (100 + Math.pow(count, 0.45));
+            var object = new THREE.Mesh(new THREE.CylinderBufferGeometry(radius, radius, radius * 1.2, 20), material);
+            object.rotation.x = Math.PI / 2;
+            object.position.set(xy[0], xy[1], z);
+            container.add(object);
         }
     };
     RocksContainer.prototype.createparticles = function () {

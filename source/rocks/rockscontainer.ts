@@ -15,26 +15,35 @@ export class RocksContainer {
    }
 
    private createCluster() {
+      // Use the canonical EPSG:3857 point
       let xy = this.feature.geometry.coordinates;
-      let texture = new THREE.TextureLoader().load( "resources/imgs/rock_small.png" );
-      let material = new THREE.MeshPhongMaterial({
-            map: texture,
-            side: THREE.DoubleSide
-      });
-      let radius = this.widthFactor * (100 + Math.pow(this.count, 0.45));
-      let object = new THREE.Mesh( new THREE.CylinderBufferGeometry(radius, radius, radius * 1.2, 50), material );
-      object.rotation.x = Math.PI / 2;
+      let count = this.count;
+      let widthFactor = this.widthFactor;
+      let container = this.container;
 
       if (this.options.elevationLookup) {
-         this.options.elevationLookup.lookup(xy).then(z => {
-            object.position.set( xy[0], xy[1], z);
-            this.container.add( object );
+         this.options.elevationLookup.intersect(xy).then(intersection => {
+            if (intersection) {
+               createCluster(xy, intersection.point.z);
+            }
             this.createparticles();
          });
       } else {
-         object.position.set( xy[0], xy[1], 2000); // + radius);
-         this.container.add( object );
+         createCluster(xy, 2000);
          this.createparticles();
+      }
+
+      function createCluster(xy, z) {
+         let texture = new THREE.TextureLoader().load( "resources/imgs/red_brick.jpg" );
+         let material = new THREE.MeshPhongMaterial({
+               map: texture,
+               side: THREE.DoubleSide
+         });
+         let radius = widthFactor * (100 + Math.pow(count, 0.45));
+         let object = new THREE.Mesh( new THREE.CylinderBufferGeometry(radius, radius, radius * 1.2, 20), material );
+         object.rotation.x = Math.PI / 2;
+         object.position.set( xy[0], xy[1], z);
+         container.add( object );
       }
    }
 
