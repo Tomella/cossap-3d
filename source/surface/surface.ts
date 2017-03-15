@@ -39,6 +39,7 @@ export class Surface extends Layer {
       }).catch(function (err) {
          Explorer3d.Logger.error("We failed in the simple example");
          Explorer3d.Logger.error(err);
+         throw err;
       });
    }
 
