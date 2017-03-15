@@ -66,6 +66,9 @@ export class View {
          this.factory.show(surface);
          this.fetchBoreholes(bbox);
          this.fetchRocks(bbox);
+      }).catch(err => {
+         // If we can't get a surface we may as well give up because that is the 3D part.
+         this.mappings.dead();
       });
    }
 

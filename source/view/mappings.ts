@@ -117,4 +117,9 @@ export class Mappings {
          };
       });
    }
+
+   dead() {
+      let element = <HTMLElement> this.dom.serviceIsDead;
+      element.classList.remove("hide");
+   }
 }
