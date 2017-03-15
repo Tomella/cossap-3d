@@ -13,6 +13,7 @@ export class Bind {
       showHideBoreholes: document.getElementById("showHideBoreholes"),
       surfaceMaterialRadio: document.getElementsByName("surfaceMaterialRadio"),
       invalidParameter: document.getElementById("invalidParameter"),
-      showHideRocks: document.getElementById("showHideRocks")
+      showHideRocks: document.getElementById("showHideRocks"),
+      serviceIsDead: document.getElementById("serviceIsDead")
    };
 }
