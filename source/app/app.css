@@ -2,7 +2,7 @@
    display:none;
 }
 
-#invalidParameter {
+#invalidParameter, #serviceIsDead {
    text-align: center;
    padding: 40px;
    z-index: 9;
