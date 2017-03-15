@@ -21,7 +21,7 @@
             <div class="texture">
                <label>Stretch Elevation</label>
                (<span id="verticalExaggerationValue">1</span>)
-               <input min="0" max="100" step="0.2" id="verticalExaggeration" type="range" value="1"/>
+               <input min="0.2" max="100" step="0.2" id="verticalExaggeration" type="range" value="1"/>
             </div>
          </div>
       </div>
@@ -91,7 +91,12 @@
 
    <div id="invalidParameter" class="hide">
       Oh dear. The parameters are not recognizable.<br/>
-      I can't draw anything as I don't know where you want it drawn.'
+      I can't draw anything as I don't know where you want it drawn.
+   </div>
+
+   <div id="serviceIsDead" class="hide">
+      Oh dear. We can't continue.<br/>
+      One of the critical services is dead. Please try again later.
    </div>
 
    <!-- Stuff we didn't write-->
