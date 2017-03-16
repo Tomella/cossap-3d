@@ -1,4 +1,5 @@
 import { LayerSwitch } from "../layer/layerswitch";
+import { MessageDispatcher } from "./messagedispatcher";
 declare var Explorer3d;
 
 /**
@@ -7,6 +8,7 @@ declare var Explorer3d;
 export class Mappings {
    private _materials: any;
    private _radioMap: any;
+   private _messageDispatcher: MessageDispatcher;
    private _boreholes;
    private _rocks;
    private _surfaceMaterialSelect = "image";
@@ -55,6 +57,13 @@ export class Mappings {
    set boreholes(boreholes) {
       this._boreholes = boreholes;
       if (boreholes) boreholes.visible = this.dom.showHideBoreholes.checked;
+   }
+
+   set messageDispatcher(dispatcher) {
+      if (this._messageDispatcher) {
+         this._messageDispatcher.clear();
+      }
+      this._messageDispatcher = new MessageDispatcher(this.dom.message, dispatcher);
    }
 
    addMaterial(detail: LayerSwitch) {
