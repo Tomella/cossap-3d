@@ -167,6 +167,7 @@ var Bind = (function () {
 // Keep all the DOM stuff together. Make the abstraction to the HTML here
 Bind.dom = {
     target: document.getElementById("target"),
+    message: document.getElementById("messageBus"),
     body: document.body,
     verticalExaggeration: document.getElementById("verticalExaggeration"),
     verticalExaggerationView: document.getElementById("verticalExaggerationValue"),
@@ -231,7 +232,7 @@ var CossapCameraPositioner = (function (_super) {
     CossapCameraPositioner.prototype.position = function (z, radius, center) {
         return {
             x: center.x,
-            y: center.y - 0.5 * radius,
+            y: center.y - 2 * radius,
             z: center.z + 2 * radius
         };
     };
@@ -309,6 +310,34 @@ function getElevation(mesh, point) {
     return z;
 }
 
+var MessageDispatcher = (function () {
+    function MessageDispatcher(element, dispatcher) {
+        this.element = element;
+        var timer;
+        var clear = function () {
+            element.innerHTML = "";
+            element.classList.remove("log", "warn", "error", "success");
+            element.classList.add("hide");
+        };
+        var logger = function (event) {
+            clearTimeout(timer);
+            element.innerHTML = event.data;
+            element.classList.remove("hide", "log", "warn", "error", "success");
+            element.classList.add(event.type);
+            timer = setTimeout(function () {
+                clear();
+            }, event.duration);
+        };
+        dispatcher.addEventListener("log", logger);
+        dispatcher.addEventListener("warn", logger);
+        dispatcher.addEventListener("error", logger);
+        dispatcher.addEventListener("success", logger);
+    }
+    MessageDispatcher.prototype.clear = function () {
+    };
+    return MessageDispatcher;
+}());
+
 /**
  * This is the bridge between the UI and the model
  */
@@ -361,6 +390,16 @@ var Mappings = (function () {
             this._boreholes = boreholes;
             if (boreholes)
                 boreholes.visible = this.dom.showHideBoreholes.checked;
+        },
+        enumerable: true,
+        configurable: true
+    });
+    Object.defineProperty(Mappings.prototype, "messageDispatcher", {
+        set: function (dispatcher) {
+            if (this._messageDispatcher) {
+                this._messageDispatcher.clear();
+            }
+            this._messageDispatcher = new MessageDispatcher(this.dom.message, dispatcher);
         },
         enumerable: true,
         configurable: true
@@ -427,6 +466,69 @@ var Mappings = (function () {
     };
     return Mappings;
 }());
+
+/**
+ * A convenience singleton to convey messages around the system.
+ * Typically the view will grab a handle on this and propogate
+ * the messages to the UI. Because it is a singleton anything can
+ * grab a handle and start spitting out messages.
+ *
+ * Neither the consumer or the emitter is aware of each other so
+ * it should stay nicely decoupled (and it is highly cohesive).
+ *
+ * There is nothing stopping multiple listeners from grabbing this
+ * so for example it could be grabbed by a logger and the
+ * message be logged somewhere.
+ */
+var MessageBus = (function (_super) {
+    __extends(MessageBus, _super);
+    function MessageBus() {
+        var _this = _super.call(this) || this;
+        if (MessageBus.instance) {
+            throw new Error("Use the static instance property. Do not create a new on");
+        }
+        return _this;
+    }
+    MessageBus.prototype.clear = function () {
+        this.dispatchEvent({
+            type: "clear"
+        });
+    };
+    MessageBus.prototype.success = function (message, duration) {
+        if (duration === void 0) { duration = 10000; }
+        this.dispatchEvent({
+            type: "success",
+            data: message,
+            duration: duration
+        });
+    };
+    MessageBus.prototype.log = function (message, duration) {
+        if (duration === void 0) { duration = 10000; }
+        this.dispatchEvent({
+            type: "log",
+            data: message,
+            duration: duration
+        });
+    };
+    MessageBus.prototype.warn = function (message, duration) {
+        if (duration === void 0) { duration = 10000; }
+        this.dispatchEvent({
+            type: "warn",
+            data: message,
+            duration: duration
+        });
+    };
+    MessageBus.prototype.error = function (message, duration) {
+        if (duration === void 0) { duration = 10000; }
+        this.dispatchEvent({
+            type: "error",
+            data: message,
+            duration: duration
+        });
+    };
+    return MessageBus;
+}(THREE.EventDispatcher));
+MessageBus.instance = new MessageBus();
 
 var WorkerEvent = (function () {
     function WorkerEvent() {
@@ -841,9 +943,9 @@ Config.preferences = {
             "&coverage=1&CRS=EPSG:3857&BBOX=${bbox}&FORMAT=GeoTIFF&RESX=${resx}&RESY=${resy}&RESPONSE_CRS=EPSG:3857&HEIGHT=${height}&WIDTH=${width}",
         esriTemplate: "http://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&f=${format}&format=jpg&size=${size}",
         topoTemplate: "http://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/export?bbox=${bbox}&f=image&format=jpg&size=${width},${height}",
-        resolutionX: 75,
-        imageWidth: 256,
-        hiResX: 256,
+        resolutionX: 60,
+        imageWidth: 200,
+        hiResX: 512,
         hiResImageWidth: 512,
         hiResTopoWidth: 512,
         opacity: 1,
@@ -1195,8 +1297,8 @@ var View = (function () {
         this.bbox = bbox;
         this.options = options;
         if (bbox) {
+            this.messageBus = MessageBus.instance;
             this.draw();
-            this.mappings = new Mappings(this.factory, Bind.dom);
         }
         else {
             this.die();
@@ -1213,6 +1315,9 @@ var View = (function () {
         var viewOptions = this.options.worldView;
         viewOptions.cameraPositioner = new CossapCameraPositioner();
         var factory = this.factory = new Explorer3d.WorldFactory(this.options.target, viewOptions);
+        this.mappings = new Mappings(factory, Bind.dom);
+        this.mappings.messageDispatcher = this.messageBus;
+        this.messageBus.log("Loading...");
         var ll = proj4("EPSG:4326", "EPSG:3857", [bbox[0], bbox[1]]);
         var ur = proj4("EPSG:4326", "EPSG:3857", [bbox[2], bbox[3]]);
         options.bbox = ll;
@@ -1222,13 +1327,17 @@ var View = (function () {
         this.elevationLookup = new ElevationLookup();
         this.surface = new SurfaceManager(options);
         this.surface.addEventListener(SurfaceEvent.SURFACE_LOADED, function (event) {
+            _this.messageBus.log("Loaded Hi Res surface", 4000);
             _this.factory.extend(event.data, false);
         });
         this.surface.addEventListener(SurfaceEvent.SURFACE_ELEVATION, function (event) {
+            _this.messageBus.log("Loaded elevation details", 4000);
             _this.elevationLookup.setMesh(event.data);
         });
         this.surface.addEventListener(SurfaceEvent.MATERIAL_LOADED, function (event) {
-            _this.mappings.addMaterial(event.data);
+            var data = event.data;
+            _this.messageBus.log("Loaded " + data.name + " surface", 4000);
+            _this.mappings.addMaterial(data);
         });
         this.surface.parse().then(function (surface) {
             // We got back a document so transform and show.
@@ -1247,6 +1356,7 @@ var View = (function () {
             _this.mappings.rocks = data;
             if (data) {
                 _this.factory.extend(data, false);
+                _this.messageBus.log("Rocks loading...", 4000);
             }
             // window["larry"] = this.factory;
         }).catch(function (err) {
@@ -1259,6 +1369,7 @@ var View = (function () {
         this.boreholes = new BoreholesManager(Object.assign({ bbox: bbox }, this.options.boreholes));
         this.boreholes.parse().then(function (data) {
             if (data) {
+                _this.messageBus.log("Boreholes complete", 4000);
                 _this.mappings.boreholes = data;
                 _this.factory.extend(data, false);
             }
