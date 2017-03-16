@@ -3,6 +3,7 @@ import { BoreholesManager } from "../boreholes/boreholesmanager";
 import { CossapCameraPositioner } from "./cossapcamerapositioner";
 import { ElevationLookup } from "../elevation/elevationlookup";
 import { Mappings } from "./mappings";
+import { MessageBus } from "../message/messagebus";
 import { RocksManager } from "../rocks/rocksmanager";
 import { SurfaceEvent } from "../surface/surfaceevent";
 import { SurfaceManager } from "../surface/surfacemanager";
@@ -11,6 +12,7 @@ declare var proj4;
 
 export class View {
    elevationLookup: ElevationLookup;
+   messageBus: MessageBus;
    factory;
    mappings: Mappings;
    surface: SurfaceManager;
@@ -20,8 +22,8 @@ export class View {
    constructor(public bbox: number[], public options: any) {
 
       if (bbox) {
+         this.messageBus = MessageBus.instance;
          this.draw();
-         this.mappings = new Mappings(this.factory, Bind.dom);
       } else {
          this.die();
       }
@@ -39,6 +41,10 @@ export class View {
       viewOptions.cameraPositioner = new CossapCameraPositioner();
       let factory = this.factory = new Explorer3d.WorldFactory(this.options.target, viewOptions);
 
+      this.mappings = new Mappings(factory, Bind.dom);
+      this.mappings.messageDispatcher = this.messageBus;
+      this.messageBus.log("Loading...");
+
       let ll = proj4("EPSG:4326", "EPSG:3857", [bbox[0], bbox[1]]);
       let ur = proj4("EPSG:4326", "EPSG:3857", [bbox[2], bbox[3]]);
       options.bbox = ll;
@@ -51,15 +57,19 @@ export class View {
 
       this.surface = new SurfaceManager(options);
       this.surface.addEventListener(SurfaceEvent.SURFACE_LOADED, event => {
+         this.messageBus.log("Loaded Hi Res surface", 4000);
          this.factory.extend(event.data, false);
       });
 
       this.surface.addEventListener(SurfaceEvent.SURFACE_ELEVATION, event => {
+         this.messageBus.log("Loaded elevation details", 4000);
          this.elevationLookup.setMesh(event.data);
       });
 
       this.surface.addEventListener(SurfaceEvent.MATERIAL_LOADED, event => {
-         this.mappings.addMaterial(event.data);
+         let data = event.data;
+         this.messageBus.log("Loaded " + data.name + " surface", 4000);
+         this.mappings.addMaterial(data);
       });
 
 
@@ -80,6 +90,7 @@ export class View {
          this.mappings.rocks = data;
          if (data) {
             this.factory.extend(data, false);
+            this.messageBus.log("Rocks loading...", 4000);
          }
          // window["larry"] = this.factory;
       }).catch(err => {
@@ -92,6 +103,7 @@ export class View {
       this.boreholes = new BoreholesManager(Object.assign({ bbox }, this.options.boreholes));
       this.boreholes.parse().then(data => {
          if (data) {
+            this.messageBus.log("Boreholes complete", 4000);
             this.mappings.boreholes = data;
             this.factory.extend(data, false);
          }
