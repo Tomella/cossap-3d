@@ -51,9 +51,11 @@ export class View {
 
       this.surface = new SurfaceManager(options);
       this.surface.addEventListener(SurfaceEvent.SURFACE_LOADED, event => {
-         let surface = event.data;
-         this.factory.extend(surface, false);
-         this.elevationLookup.setMesh(surface);
+         this.factory.extend(event.data, false);
+      });
+
+      this.surface.addEventListener(SurfaceEvent.SURFACE_ELEVATION, event => {
+         this.elevationLookup.setMesh(event.data);
       });
 
       this.surface.addEventListener(SurfaceEvent.MATERIAL_LOADED, event => {
