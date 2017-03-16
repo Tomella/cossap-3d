@@ -1,6 +1,7 @@
 import { UrlParameters } from "../utils/query";
 
 export class Storage extends THREE.EventDispatcher {
+   static MIN_SIDE_LENGTH = 0.004;
    static BBOX_KEY = "cossap3d.bbox";
    static BBOX_EVENT = "bbox.change";
 
@@ -32,7 +33,38 @@ export class Storage extends THREE.EventDispatcher {
    }
 
    private parseParameters() {
-      this.bbox = this.parseBbox("[" + UrlParameters.parameters().bbox + "]");
+      let bbox = this.parseBbox("[" + UrlParameters.parameters().bbox + "]");
+      let width = bbox[2] - bbox[0];
+      let height = bbox[3] - bbox[1];
+
+      // What about the duffer that puts it around the wrong way?
+      if (width < 0) {
+         let temp = bbox[2];
+         bbox[2] = bbox[0];
+         bbox[0] = temp;
+         width = Math.abs(width);
+      }
+      if (height < 0) {
+         let temp = bbox[3];
+         bbox[3] = bbox[1];
+         bbox[1] = temp;
+         height = Math.abs(height);
+      }
+
+      let centerX = (bbox[2] + bbox[0]) * 0.5;
+      let centerY = (bbox[3] + bbox[1]) * 0.5;
+      let halfwit = Storage.MIN_SIDE_LENGTH * 0.5;
+      // What about the duffer who puts in the same lat or lng?
+      if (width < Storage.MIN_SIDE_LENGTH) {
+         bbox[0] = centerX - halfwit;
+         bbox[2] = centerX + halfwit;
+      }
+      if (height < Storage.MIN_SIDE_LENGTH) {
+         bbox[1] = centerY - halfwit;
+         bbox[3] = centerY + halfwit;
+      }
+
+      this.bbox = bbox;
    }
 
    private parseBbox(bboxStr) {
@@ -40,10 +72,7 @@ export class Storage extends THREE.EventDispatcher {
          try {
             let parts = JSON.parse(bboxStr);
             if (Array.isArray(parts) && parts.every(num => !isNaN(num)) && parts.length === 4) {
-               // We don't range check but we do check ll < ur.
-               if (parts[0] < parts[2] && parts[1] < parts[3]) {
-                  return parts;
-               }
+               return parts;
             }
          } catch (e) {
             console.log(e);
