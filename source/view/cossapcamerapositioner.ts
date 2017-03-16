@@ -19,7 +19,7 @@ export class CossapCameraPositioner extends Explorer3d.CameraPositioner {
    position(z: number, radius: number, center: { x, y, z }) {
       return {
          x: center.x,
-         y: center.y - 0.5 * radius,
+         y: center.y - 2 * radius,
          z: center.z + 2 * radius
       };
    }
