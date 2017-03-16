@@ -1,5 +1,7 @@
 import { RocksContainer } from "./rockscontainer";
 import { RocksLoader } from "./rocksloader";
+import { RocksParticles } from "./rocksparticles";
+import { longestSide, featureToEpsg3857 } from "../utils/geoutils";
 declare var proj4;
 
 /**
@@ -14,10 +16,24 @@ declare var proj4;
 export class RocksManager {
    container: THREE.Object3D;
    containers: RocksContainer[];
+   rocksParticles: RocksParticles;
    static CELL_ZERO_DEGREES = 180;
    zoom: number;
 
-   constructor(public options: {any, baseUrl: string, summaryService: string, dataUrl: string, serviceUrl: string, circumference: number, bbox: number[]}) {
+   constructor(public options: {
+         any,
+         workerLocation?: string,
+         maxCount: number,
+         baseUrl: string,
+         summaryService: string,
+         dataUrl: string,
+         serviceUrl: string,
+         featuresService: string,
+         queryService: string,
+         elevationLookup: string,
+         circumference: number,
+         bbox: number[]
+   }) {
       let degrees = longestSide(options.bbox);
       this.zoom = Math.ceil(Math.log(RocksManager.CELL_ZERO_DEGREES / degrees)) + 3;
    }
@@ -32,9 +48,29 @@ export class RocksManager {
 
       return rocks.loadSummary().then((data: GeoJSON.FeatureCollection<GeoJSON.Point>) => {
          if (data && data.features && data.features.length) {
-            this.containers = data.features.map(feature => new RocksContainer(featureToEpsg3857(feature), this.options));
+            this.rocksParticles = new RocksParticles(data, this.zoom);
+
+            let count = this.rocksParticles.count;
+            let original = this.options;
+            let options = {
+               summaryOnly: count > original.maxCount,
+               bbox: original.bbox,
+               baseUrl: original.baseUrl,
+               workerLocation: original.workerLocation,
+               queryService: original.queryService,
+               featuresService: original.featuresService,
+               elevationLookup: original.elevationLookup
+            };
+
+
+            this.containers = data.features.map(feature => new RocksContainer(featureToEpsg3857(feature), options));
             this.container = new THREE.Object3D();
+            this.container.add(this.rocksParticles.points);
+
             this.containers.forEach(container => {
+               container.addEventListener(RocksContainer.PARTICLES_LOADED, particlesEvent => {
+                  this.rocksParticles.add(particlesEvent.data);
+               });
                this.container.add(container.create());
             });
             return this.container;
@@ -49,25 +85,4 @@ export class RocksManager {
    destroy() {
 
    }
-}
-
-function featureToEpsg3857(feature: GeoJSON.Feature<GeoJSON.Point>): GeoJSON.Feature<GeoJSON.Point> {
-   let point = feature.geometry.coordinates;
-   feature.properties["point"] = [point[0], point[1]];
-   feature.geometry.coordinates = pointToEpsg3857(point);
-   return feature;
-}
-
-function pointToEpsg3857(point) {
-   return proj4("EPSG:4326", "EPSG:3857", [point[0], point[1]]);
-}
-
-function bboxToEpsg3857(bbox) {
-   let ll = pointToEpsg3857([bbox[0], bbox[1]]);
-   let ur = pointToEpsg3857([bbox[2], bbox[3]]);
-   return [ll[0], ll[1], ur[0], ur[1]];
-}
-
-function longestSide(bbox: number[]): number {
-   return Math.max(bbox[2] - bbox[0], bbox[3] - bbox[1]);
 }
