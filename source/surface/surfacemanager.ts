@@ -1,10 +1,14 @@
+import { longestSide } from "../utils/geoutils";
 import { Surface } from "./surface";
 import { SurfaceLauncher } from "../workers/launcher/surfacelauncher";
 import { SurfaceEvent } from "./surfaceevent";
 declare var Explorer3d;
 
 export class SurfaceManager extends THREE.EventDispatcher {
+   private THRESHOLD_WIDTH = 1000; // 1km needed for hi res.
+
    surface: Surface;
+   loadHiresOn: boolean;
    hiResSurface: Surface;
    bbox: number[];
    aspectRatio: number;
@@ -15,12 +19,19 @@ export class SurfaceManager extends THREE.EventDispatcher {
    }
 
    parse() {
+      this.loadHiresOn = true;
       this.surface = new Surface(this.options);
       // console.log("options1");
       // console.log(this.options);
       this.surface.addEventListener(Explorer3d.WcsEsriImageryParser.BBOX_CHANGED_EVENT, event => {
          this.dispatchEvent(event);
-         this.loadHiRes(event.data);
+         let data = event.data;
+         let side = longestSide(data.bbox);
+         this.loadHiresOn = side > this.THRESHOLD_WIDTH;
+
+         if (this.loadHiresOn) {
+            this.loadHiRes(data);
+         }
       });
 
       this.surface.addEventListener(SurfaceEvent.MATERIAL_LOADED, event => {
@@ -28,9 +39,14 @@ export class SurfaceManager extends THREE.EventDispatcher {
       });
 
       return this.surface.parse().then(data => {
+         if (!this.loadHiresOn) {
+            this.dispatchEvent({
+               type: SurfaceEvent.SURFACE_ELEVATION,
+               data
+            });
+         }
          return data;
       }).catch(function (err) {
-         Explorer3d.Logger.error("We failed in the simple example");
          Explorer3d.Logger.error(err);
          throw err;
       });
@@ -76,6 +92,10 @@ export class SurfaceManager extends THREE.EventDispatcher {
 
       // this.hiResSurface = new Surface(options);
       this.hiResSurface.addEventListener(SurfaceEvent.SURFACE_LOADED, event => {
+         this.dispatchEvent({
+            type: SurfaceEvent.SURFACE_ELEVATION,
+            data: event.data
+         });
          this.dispatchEvent(event);
       });
 
