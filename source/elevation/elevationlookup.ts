@@ -20,7 +20,7 @@ export class ElevationLookup {
    intersect(point: number[]): Promise<THREE.Intersection> {
       if (this.mesh) {
          return new Promise((resolve, reject) => {
-            resolve(getElevation(this.mesh, point));
+            resolve(getIntersection(this.mesh, point));
          });
 
       } else {
