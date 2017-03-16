@@ -71,17 +71,42 @@ var Storage = (function (_super) {
         configurable: true
     });
     Storage.prototype.parseParameters = function () {
-        this.bbox = this.parseBbox("[" + UrlParameters.parameters().bbox + "]");
+        var bbox = this.parseBbox("[" + UrlParameters.parameters().bbox + "]");
+        var width = bbox[2] - bbox[0];
+        var height = bbox[3] - bbox[1];
+        // What about the duffer that puts it around the wrong way?
+        if (width < 0) {
+            var temp = bbox[2];
+            bbox[2] = bbox[0];
+            bbox[0] = temp;
+            width = Math.abs(width);
+        }
+        if (height < 0) {
+            var temp = bbox[3];
+            bbox[3] = bbox[1];
+            bbox[1] = temp;
+            height = Math.abs(height);
+        }
+        var centerX = (bbox[2] + bbox[0]) * 0.5;
+        var centerY = (bbox[3] + bbox[1]) * 0.5;
+        var halfwit = Storage.MIN_SIDE_LENGTH * 0.5;
+        // What about the duffer who puts in the same lat or lng?
+        if (width < Storage.MIN_SIDE_LENGTH) {
+            bbox[0] = centerX - halfwit;
+            bbox[2] = centerX + halfwit;
+        }
+        if (height < Storage.MIN_SIDE_LENGTH) {
+            bbox[1] = centerY - halfwit;
+            bbox[3] = centerY + halfwit;
+        }
+        this.bbox = bbox;
     };
     Storage.prototype.parseBbox = function (bboxStr) {
         if (bboxStr) {
             try {
                 var parts = JSON.parse(bboxStr);
                 if (Array.isArray(parts) && parts.every(function (num) { return !isNaN(num); }) && parts.length === 4) {
-                    // We don't range check but we do check ll < ur.
-                    if (parts[0] < parts[2] && parts[1] < parts[3]) {
-                        return parts;
-                    }
+                    return parts;
                 }
             }
             catch (e) {
@@ -126,6 +151,7 @@ var Storage = (function (_super) {
     };
     return Storage;
 }(THREE.EventDispatcher));
+Storage.MIN_SIDE_LENGTH = 0.004;
 Storage.BBOX_KEY = "cossap3d.bbox";
 Storage.BBOX_EVENT = "bbox.change";
 Storage.STATE_KEY = "cossap3d.state";
@@ -239,7 +265,7 @@ var ElevationLookup = (function () {
         var _this = this;
         if (this.mesh) {
             return new Promise(function (resolve, reject) {
-                resolve(getElevation(_this.mesh, point));
+                resolve(getIntersection(_this.mesh, point));
             });
         }
         else {
@@ -693,6 +719,7 @@ var SurfaceEvent = (function () {
 }());
 SurfaceEvent.METADATA_LOADED = "metadata.loaded";
 SurfaceEvent.SURFACE_LOADED = "surface.loaded";
+SurfaceEvent.SURFACE_ELEVATION = "surface.elevation";
 SurfaceEvent.MATERIAL_LOADED = "material.loaded";
 SurfaceEvent.SURFACE_CHANGED = "surface.changed";
 
@@ -808,9 +835,9 @@ Config.preferences = {
         header: {
             name: "Imagery over Victoria",
         },
-        template: "http://services.ga.gov.au/site_9/services/DEM_SRTM_1Second/MapServer/WCSServer?SERVICE=WCS&VERSION=1.0.0&REQUEST=GetCoverage" +
+        template_backup: "http://services.ga.gov.au/site_9/services/DEM_SRTM_1Second/MapServer/WCSServer?SERVICE=WCS&VERSION=1.0.0&REQUEST=GetCoverage" +
             "&coverage=1&CRS=EPSG:3857&BBOX=${bbox}&FORMAT=GeoTIFF&RESX=${resx}&RESY=${resy}&RESPONSE_CRS=EPSG:3857&HEIGHT=${height}&WIDTH=${width}",
-        template1: "http://services.ga.gov.au/site_9/services/DEM_SRTM_1Second_over_Bathymetry_Topography/MapServer/WCSServer?SERVICE=WCS&VERSION=1.0.0&REQUEST=GetCoverage" +
+        template: "http://services.ga.gov.au/site_9/services/DEM_SRTM_1Second_over_Bathymetry_Topography/MapServer/WCSServer?SERVICE=WCS&VERSION=1.0.0&REQUEST=GetCoverage" +
             "&coverage=1&CRS=EPSG:3857&BBOX=${bbox}&FORMAT=GeoTIFF&RESX=${resx}&RESY=${resy}&RESPONSE_CRS=EPSG:3857&HEIGHT=${height}&WIDTH=${width}",
         esriTemplate: "http://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&f=${format}&format=jpg&size=${size}",
         topoTemplate: "http://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/export?bbox=${bbox}&f=image&format=jpg&size=${width},${height}",
@@ -1082,25 +1109,37 @@ var SurfaceManager = (function (_super) {
     function SurfaceManager(options) {
         var _this = _super.call(this) || this;
         _this.options = options;
+        _this.THRESHOLD_WIDTH = 1000; // 1km needed for hi res.
         _this.lastSurfaceName = "image";
         return _this;
     }
     SurfaceManager.prototype.parse = function () {
         var _this = this;
+        this.loadHiresOn = true;
         this.surface = new Surface(this.options);
         // console.log("options1");
         // console.log(this.options);
         this.surface.addEventListener(Explorer3d.WcsEsriImageryParser.BBOX_CHANGED_EVENT, function (event) {
             _this.dispatchEvent(event);
-            _this.loadHiRes(event.data);
+            var data = event.data;
+            var side = longestSide(data.bbox);
+            _this.loadHiresOn = side > _this.THRESHOLD_WIDTH;
+            if (_this.loadHiresOn) {
+                _this.loadHiRes(data);
+            }
         });
         this.surface.addEventListener(SurfaceEvent.MATERIAL_LOADED, function (event) {
             _this.dispatchEvent(event);
         });
         return this.surface.parse().then(function (data) {
+            if (!_this.loadHiresOn) {
+                _this.dispatchEvent({
+                    type: SurfaceEvent.SURFACE_ELEVATION,
+                    data: data
+                });
+            }
             return data;
         }).catch(function (err) {
-            Explorer3d.Logger.error("We failed in the simple example");
             Explorer3d.Logger.error(err);
             throw err;
         });
@@ -1140,6 +1179,10 @@ var SurfaceManager = (function (_super) {
         });
         // this.hiResSurface = new Surface(options);
         this.hiResSurface.addEventListener(SurfaceEvent.SURFACE_LOADED, function (event) {
+            _this.dispatchEvent({
+                type: SurfaceEvent.SURFACE_ELEVATION,
+                data: event.data
+            });
             _this.dispatchEvent(event);
         });
         this.hiResSurface.parse();
@@ -1179,9 +1222,10 @@ var View = (function () {
         this.elevationLookup = new ElevationLookup();
         this.surface = new SurfaceManager(options);
         this.surface.addEventListener(SurfaceEvent.SURFACE_LOADED, function (event) {
-            var surface = event.data;
-            _this.factory.extend(surface, false);
-            _this.elevationLookup.setMesh(surface);
+            _this.factory.extend(event.data, false);
+        });
+        this.surface.addEventListener(SurfaceEvent.SURFACE_ELEVATION, function (event) {
+            _this.elevationLookup.setMesh(event.data);
         });
         this.surface.addEventListener(SurfaceEvent.MATERIAL_LOADED, function (event) {
             _this.mappings.addMaterial(event.data);
