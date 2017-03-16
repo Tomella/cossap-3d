@@ -22,8 +22,32 @@
          case "surface":
             loadSurface(data);
             break;
+         case "particles":
+            loadParticles(data);
+            break;
       }
    });
+
+   function loadParticles(options) {
+      var loader = new Cossap3d.ParticlesWorker(options);
+
+      loader.addEventListener(Cossap3d.WorkerEvent.PARTICLES_COMPLETE, function(event) {
+         context.postMessage({
+            type: event.type,
+            data:event.data
+         });
+         context.close();
+      });
+
+      loader.addEventListener(Cossap3d.WorkerEvent.PARTICLES_LOADED, function(event) {
+         context.postMessage({
+            type: event.type,
+            data:event.data
+         });
+      });
+
+      loader.load();
+   }
 
    function loadSurface(options) {
       var extentBbox = options.extentBbox;

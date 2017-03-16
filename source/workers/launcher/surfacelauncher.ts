@@ -51,17 +51,17 @@ export class SurfaceLauncher extends Surface {
       worker.addEventListener("message", message => {
          let data = message.data;
          if (data.type === WorkerEvent.XYZ_LOADED) {
-            console.log("WorkerEvent.XYZ_LOADED: " + this.since());
+            // console.log("WorkerEvent.XYZ_LOADED: " + this.since());
             this.completeGeometry(geometryState.geometry);
             this.checkComplete();
          } else if (data.type === WorkerEvent.XYZ_BLOCK) {
-            console.log("WorkerEvent.XYZ_BLOCK: " + this.since());
+            // console.log("WorkerEvent.XYZ_BLOCK: " + this.since());
             this.extendGeometry(geometryState, data.data);
          } else if (data.type === WorkerEvent.COLOR_BLOCK) {
-            console.log("WorkerEvent.COLOR_BLOCK: " + this.since());
+            // console.log("WorkerEvent.COLOR_BLOCK: " + this.since());
             this.extendHeatmapMaterial(heapMapState, options, data.data);
          } else if (data.type === WorkerEvent.COLOR_LOADED) {
-            console.log("WorkerEvent.COLOR_LOADED: " + this.since());
+            // console.log("WorkerEvent.COLOR_LOADED: " + this.since());
             this.completeHeatmapMaterial(heapMapState.mask, options);
          }
       });
@@ -118,7 +118,7 @@ export class SurfaceLauncher extends Surface {
    }
 
    extendHeatmapMaterial({mask, context, id, d}, options, res) {
-      console.log("createHeatmapMaterial continue: " + this.since());
+      // console.log("createHeatmapMaterial continue: " + this.since());
       res.forEach(({ x, y, r, g, b, a }) => {
          d[0] = r;
          d[1] = g;

@@ -16,8 +16,8 @@ export class SurfaceManager extends THREE.EventDispatcher {
 
    parse() {
       this.surface = new Surface(this.options);
-      console.log("options1");
-      console.log(this.options);
+      // console.log("options1");
+      // console.log(this.options);
       this.surface.addEventListener(Explorer3d.WcsEsriImageryParser.BBOX_CHANGED_EVENT, event => {
          this.dispatchEvent(event);
          this.loadHiRes(event.data);
@@ -32,11 +32,12 @@ export class SurfaceManager extends THREE.EventDispatcher {
       }).catch(function (err) {
          Explorer3d.Logger.error("We failed in the simple example");
          Explorer3d.Logger.error(err);
+         throw err;
       });
    }
 
    private loadHiRes(data) {
-      console.log(data);
+      // console.log(data);
 
       let aspectRatio = data.width / data.height;
       let width, height, imageWidth, imageHeight;

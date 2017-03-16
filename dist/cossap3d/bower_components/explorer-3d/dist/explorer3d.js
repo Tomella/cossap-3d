@@ -3046,15 +3046,15 @@ var World = (function () {
                 },
                 directional: {
                     color: 0xffffff,
-                    intensity: 0.4,
+                    intensity: 0.2,
                     center: {
                         x: 0,
                         y: 0,
                         z: 0
                     },
                     position: {
-                        dx: 500,
-                        dy: 100,
+                        dx: 100,
+                        dy: 500,
                         dz: -300
                     }
                 }
@@ -3741,13 +3741,13 @@ var WorldFactory = (function (_super) {
     };
     WorldFactory.prototype.extend = function (data, resize) {
         if (resize === void 0) { resize = true; }
-        var center = new THREE.Box3().setFromObject(data).getCenter();
-        data.userData.center = center;
         this.state.dataContainer.add(data);
         // Sometimes we don't want a flash.
         if (!resize) {
             return;
         }
+        var center = new THREE.Box3().setFromObject(data).getCenter();
+        data.userData.center = center;
         var box = new THREE.Box3().setFromObject(this.state.dataContainer);
         center = box.getCenter();
         var radius = box.getBoundingSphere().radius;

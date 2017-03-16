@@ -35,7 +35,7 @@
          console.log("We have an event");
          // this.dispatchEvent(event);
       });
-debugger
+
       return parser.parse().then(data => {
          this.surface = data;
          Explorer3d.Logger.log(Date.now() + ": We have shown the document");

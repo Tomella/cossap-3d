@@ -148,7 +148,8 @@ Bind.dom = {
     showHideBoreholes: document.getElementById("showHideBoreholes"),
     surfaceMaterialRadio: document.getElementsByName("surfaceMaterialRadio"),
     invalidParameter: document.getElementById("invalidParameter"),
-    showHideRocks: document.getElementById("showHideRocks")
+    showHideRocks: document.getElementById("showHideRocks"),
+    serviceIsDead: document.getElementById("serviceIsDead")
 };
 
 // Given a bbox, return a 2d grid with the same x, y coordinates plus a z-coordinate as returned by the 1d TerrainLoader.
@@ -394,19 +395,88 @@ var Mappings = (function () {
             
         });
     };
+    Mappings.prototype.dead = function () {
+        var element = this.dom.serviceIsDead;
+        element.classList.remove("hide");
+    };
     return Mappings;
 }());
 
-var RocksContainer = (function () {
-    function RocksContainer(feature, options) {
-        this.feature = feature;
-        this.options = options;
-        this.container = new THREE.Object3D();
-        this.id = feature.id;
-        var zoom = +this.id.split("/")[0];
-        this.widthFactor = 3000 / Math.pow(2, zoom);
-        this.createCluster();
+var WorkerEvent = (function () {
+    function WorkerEvent() {
     }
+    return WorkerEvent;
+}());
+WorkerEvent.XYZ_LOADED = "xyz.loaded";
+WorkerEvent.XYZ_BLOCK = "xyz.block";
+WorkerEvent.COLOR_LOADED = "color.loaded";
+WorkerEvent.COLOR_BLOCK = "color.block";
+WorkerEvent.PARTICLES_LOADED = "particles.loaded";
+WorkerEvent.PARTICLES_COMPLETE = "particles.complete";
+
+var RocksParticlesLauncher = (function (_super) {
+    __extends(RocksParticlesLauncher, _super);
+    function RocksParticlesLauncher(options) {
+        var _this = _super.call(this) || this;
+        _this.options = options;
+        return _this;
+    }
+    RocksParticlesLauncher.prototype.since = function () {
+        return Date.now() - this.startMilli;
+    };
+    RocksParticlesLauncher.prototype.parse = function () {
+        var _this = this;
+        this.startMilli = Date.now();
+        var worker = new Worker(this.options.workerLocation);
+        console.log("started worker: " + this.options.workerLocation);
+        worker.addEventListener("message", function (message) {
+            var data = message.data;
+            _this.dispatchEvent(data);
+            if (data.type === WorkerEvent.PARTICLES_COMPLETE) {
+                worker.terminate();
+            }
+        });
+        worker.postMessage(Object.assign({ type: "particles" }, this.options));
+    };
+    return RocksParticlesLauncher;
+}(THREE.EventDispatcher));
+
+var RocksContainer = (function (_super) {
+    __extends(RocksContainer, _super);
+    function RocksContainer(feature, options) {
+        var _this = _super.call(this) || this;
+        _this.feature = feature;
+        _this.options = options;
+        _this.container = new THREE.Object3D();
+        _this.id = feature.id;
+        var zoom = +_this.id.split("/")[0];
+        _this.widthFactor = 3000 / Math.pow(2, zoom);
+        _this.createCluster();
+        return _this;
+    }
+    RocksContainer.prototype.optionalParticles = function () {
+        var _this = this;
+        // Bail out if we have been told to.
+        if (this.options.summaryOnly) {
+            return;
+        }
+        var launcher = new RocksParticlesLauncher({
+            bbox: this.options.bbox,
+            id: this.id,
+            template: this.options.baseUrl + this.options.featuresService,
+            workerLocation: this.options.workerLocation
+        });
+        launcher.addEventListener(WorkerEvent.PARTICLES_LOADED, function (event) {
+            _this.dispatchEvent(event);
+        });
+        launcher.addEventListener(WorkerEvent.PARTICLES_COMPLETE, function (event) {
+            // Sometimes we do not create them
+            if (_this.cluster)
+                _this.cluster.visible = false;
+            _this.dispatchEvent(event);
+        });
+        launcher.parse();
+    };
     RocksContainer.prototype.createCluster = function () {
         var _this = this;
         // Use the canonical EPSG:3857 point
@@ -417,14 +487,14 @@ var RocksContainer = (function () {
         if (this.options.elevationLookup) {
             this.options.elevationLookup.intersect(xy).then(function (intersection) {
                 if (intersection) {
-                    createCluster(xy, intersection.point.z);
+                    _this.cluster = createCluster(xy, intersection.point.z);
                 }
-                _this.createparticles();
+                _this.optionalParticles();
             });
         }
         else {
-            createCluster(xy, 2000);
-            this.createparticles();
+            this.cluster = createCluster(xy, 2000);
+            this.optionalParticles();
         }
         function createCluster(xy, z) {
             var texture = new THREE.TextureLoader().load("resources/imgs/red_brick.jpg");
@@ -437,9 +507,8 @@ var RocksContainer = (function () {
             object.rotation.x = Math.PI / 2;
             object.position.set(xy[0], xy[1], z);
             container.add(object);
+            return object;
         }
-    };
-    RocksContainer.prototype.createparticles = function () {
     };
     Object.defineProperty(RocksContainer.prototype, "count", {
         get: function () {
@@ -452,7 +521,8 @@ var RocksContainer = (function () {
         return this.container;
     };
     return RocksContainer;
-}());
+}(THREE.EventDispatcher));
+RocksContainer.PARTICLES_LOADED = WorkerEvent.PARTICLES_LOADED;
 
 var RocksLoader = (function () {
     function RocksLoader(options) {
@@ -473,6 +543,87 @@ var RocksLoader = (function () {
     };
     return RocksLoader;
 }());
+
+var RocksParticles = (function () {
+    function RocksParticles(extent, zoom) {
+        this.extent = extent;
+        this.zoom = zoom;
+        this.prepareCloud();
+    }
+    RocksParticles.prototype.prepareCloud = function () {
+        this.nextIndex = 0;
+        var particles = this.count;
+        var geometry = this.geometry = new THREE.BufferGeometry();
+        this.positions = new Float32Array(particles * 3);
+        this.colors = new Float32Array(particles * 3);
+        geometry.addAttribute("position", new THREE.BufferAttribute(this.positions, 3));
+        geometry.addAttribute("color", new THREE.BufferAttribute(this.colors, 3));
+        geometry.setDrawRange(0, this.nextIndex);
+        // Use the zoom to make the dots the "right" size
+        var material = new THREE.PointsMaterial({ size: 80000 / Math.pow(2, this.zoom - 2), vertexColors: THREE.VertexColors });
+        this._points = new THREE.Points(geometry, material);
+        window["points"] = this.points;
+    };
+    RocksParticles.prototype.add = function (points) {
+        var _this = this;
+        if (points && points.length) {
+            var positions_1 = this.geometry.attributes.position.array;
+            var geometry = this.geometry;
+            var colors_1 = this.geometry.attributes.color.array;
+            points.forEach(function (data) {
+                var point = data.point;
+                var color = data.color;
+                var index = _this.nextIndex * 3;
+                colors_1[index] = color.r;
+                colors_1[index + 1] = color.g;
+                colors_1[index + 2] = color.b;
+                positions_1[index] = point.x;
+                positions_1[index + 1] = point.y;
+                positions_1[index + 2] = point.z;
+                _this.nextIndex++;
+            });
+            this.geometry.setDrawRange(0, this.nextIndex);
+            this.geometry.attributes.color.needsUpdate = true;
+            this.geometry.attributes.position.needsUpdate = true;
+            this.geometry.computeVertexNormals();
+            this.geometry.computeBoundingSphere();
+        }
+    };
+    Object.defineProperty(RocksParticles.prototype, "points", {
+        get: function () {
+            return this._points;
+        },
+        enumerable: true,
+        configurable: true
+    });
+    Object.defineProperty(RocksParticles.prototype, "count", {
+        get: function () {
+            if (!this._count) {
+                this._count = this.extent.features.reduce(function (accumulator, feature) {
+                    return accumulator + feature.properties["count"];
+                }, 0);
+            }
+            return this._count;
+        },
+        enumerable: true,
+        configurable: true
+    });
+    return RocksParticles;
+}());
+
+function featureToEpsg3857(feature) {
+    var point = feature.geometry.coordinates;
+    feature.properties["point"] = [point[0], point[1]];
+    feature.geometry.coordinates = pointToEpsg3857(point);
+    return feature;
+}
+function pointToEpsg3857(point) {
+    return proj4("EPSG:4326", "EPSG:3857", [point[0], point[1]]);
+}
+
+function longestSide(bbox) {
+    return Math.max(bbox[2] - bbox[0], bbox[3] - bbox[1]);
+}
 
 /**
  * Shows rock properties. All layers are contained in a single THREE.Object3d
@@ -499,9 +650,25 @@ var RocksManager = (function () {
         });
         return rocks.loadSummary().then(function (data) {
             if (data && data.features && data.features.length) {
-                _this.containers = data.features.map(function (feature) { return new RocksContainer(featureToEpsg3857(feature), _this.options); });
+                _this.rocksParticles = new RocksParticles(data, _this.zoom);
+                var count = _this.rocksParticles.count;
+                var original = _this.options;
+                var options_1 = {
+                    summaryOnly: count > original.maxCount,
+                    bbox: original.bbox,
+                    baseUrl: original.baseUrl,
+                    workerLocation: original.workerLocation,
+                    queryService: original.queryService,
+                    featuresService: original.featuresService,
+                    elevationLookup: original.elevationLookup
+                };
+                _this.containers = data.features.map(function (feature) { return new RocksContainer(featureToEpsg3857(feature), options_1); });
                 _this.container = new THREE.Object3D();
+                _this.container.add(_this.rocksParticles.points);
                 _this.containers.forEach(function (container) {
+                    container.addEventListener(RocksContainer.PARTICLES_LOADED, function (particlesEvent) {
+                        _this.rocksParticles.add(particlesEvent.data);
+                    });
                     _this.container.add(container.create());
                 });
                 return _this.container;
@@ -518,18 +685,6 @@ var RocksManager = (function () {
     return RocksManager;
 }());
 RocksManager.CELL_ZERO_DEGREES = 180;
-function featureToEpsg3857(feature) {
-    var point = feature.geometry.coordinates;
-    feature.properties["point"] = [point[0], point[1]];
-    feature.geometry.coordinates = pointToEpsg3857(point);
-    return feature;
-}
-function pointToEpsg3857(point) {
-    return proj4("EPSG:4326", "EPSG:3857", [point[0], point[1]]);
-}
-function longestSide(bbox) {
-    return Math.max(bbox[2] - bbox[0], bbox[3] - bbox[1]);
-}
 
 var SurfaceEvent = (function () {
     function SurfaceEvent() {
@@ -590,7 +745,7 @@ var Surface = (function (_super) {
         });
         return parser.parse().then(function (data) {
             _this.surface = data;
-            Explorer3d.Logger.log(seconds$1() + ": We have shown the document");
+            Explorer3d.Logger.log(seconds$2() + ": We have shown the document");
             setTimeout(function () {
                 _this.fetchMaterials();
                 _this.fetchWireframeMaterial();
@@ -599,6 +754,7 @@ var Surface = (function (_super) {
         }).catch(function (err) {
             Explorer3d.Logger.error("We failed in the simple example");
             Explorer3d.Logger.error(err);
+            throw err;
         });
     };
     Surface.prototype.fetchWireframeMaterial = function () {
@@ -630,7 +786,7 @@ var Surface = (function (_super) {
     };
     return Surface;
 }(Layer));
-function seconds$1() {
+function seconds$2() {
     return (Date.now() % 100000) / 1000;
 }
 
@@ -652,14 +808,16 @@ Config.preferences = {
         header: {
             name: "Imagery over Victoria",
         },
-        template: "http://services.ga.gov.au/site_9/services/DEM_SRTM_1Second_over_Bathymetry_Topography/MapServer/WCSServer?SERVICE=WCS&VERSION=1.0.0&REQUEST=GetCoverage" +
+        template: "http://services.ga.gov.au/site_9/services/DEM_SRTM_1Second/MapServer/WCSServer?SERVICE=WCS&VERSION=1.0.0&REQUEST=GetCoverage" +
+            "&coverage=1&CRS=EPSG:3857&BBOX=${bbox}&FORMAT=GeoTIFF&RESX=${resx}&RESY=${resy}&RESPONSE_CRS=EPSG:3857&HEIGHT=${height}&WIDTH=${width}",
+        template1: "http://services.ga.gov.au/site_9/services/DEM_SRTM_1Second_over_Bathymetry_Topography/MapServer/WCSServer?SERVICE=WCS&VERSION=1.0.0&REQUEST=GetCoverage" +
             "&coverage=1&CRS=EPSG:3857&BBOX=${bbox}&FORMAT=GeoTIFF&RESX=${resx}&RESY=${resy}&RESPONSE_CRS=EPSG:3857&HEIGHT=${height}&WIDTH=${width}",
         esriTemplate: "http://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&f=${format}&format=jpg&size=${size}",
         topoTemplate: "http://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/export?bbox=${bbox}&f=image&format=jpg&size=${width},${height}",
         resolutionX: 75,
         imageWidth: 256,
-        hiResX: 600,
-        hiResImageWidth: 3000,
+        hiResX: 256,
+        hiResImageWidth: 512,
         hiResTopoWidth: 512,
         opacity: 1,
         extent: new Elevation.Extent2d(1000000, -10000000, 20000000, -899000),
@@ -673,7 +831,55 @@ Config.preferences = {
         summaryService: "summary?zoom=${zoom}&xmin=${xmin}&xmax=${xmax}&ymin=${ymin}&ymax=${ymax}",
         featuresService: "features/",
         queryService: "query/",
-        maxCount: 300000
+        maxCount: 200000,
+        workerLocation: "workers/target/broker.js",
+        lithologyGroups: {
+            "alkaline ultrabasic": { r: 220, g: 20, b: 60 },
+            "argillaceous detrital sediment": { r: 0, g: 250, b: 154 },
+            "fault / shear rock": { r: 84, g: 255, b: 159 },
+            "feldspar- or lithic-rich arenite to rudite": { r: 255, g: 231, b: 186 },
+            "high grade metamorphic rock": { r: 240, g: 255, b: 240 },
+            "igneous": { r: 255, g: 182, b: 193 },
+            "igneous felsic": { r: 193, g: 255, b: 193 },
+            "igneous felsic intrusive": { r: 250, g: 235, b: 215 },
+            "igneous felsic volcanic": { r: 255, g: 239, b: 219 },
+            "igneous foid-bearing volcanic": { r: 238, g: 223, b: 204 },
+            "igneous intermediate intrusive": { r: 205, g: 192, b: 176 },
+            "igneous intermediate volcanic": { r: 222, g: 184, b: 135 },
+            "igneous intrusive": { r: 255, g: 211, b: 155 },
+            "igneous kimberlite": { r: 238, g: 197, b: 145 },
+            "igneous lamprophyres": { r: 237, g: 145, b: 33 },
+            "igneous mafic": { r: 255, g: 140, b: 0 },
+            "igneous mafic intrusive": { r: 255, g: 127, b: 0 },
+            "igneous mafic volcanic": { r: 238, g: 118, b: 0 },
+            "igneous ultramafic": { r: 255, g: 128, b: 0 },
+            "igneous ultramafic intrusive": { r: 255, g: 165, b: 75 },
+            "igneous ultramafic volcanic": { r: 205, g: 133, b: 63 },
+            "igneous volcanic": { r: 255, g: 218, b: 185 },
+            "low grade metamorphic rock": { r: 238, g: 58, b: 140 },
+            "meta-igneous": { r: 255, g: 110, b: 180 },
+            "meta-igneous felsic": { r: 154, g: 255, b: 154 },
+            "meta-igneous felsic volcanic": { r: 142, g: 56, b: 142 },
+            "meta-igneous mafic": { r: 113, g: 113, b: 198 },
+            "meta-igneous mafic volcanic": { r: 125, g: 158, b: 192 },
+            "meta-igneous ultramafic": { r: 56, g: 142, b: 142 },
+            "metamorphic": { r: 255, g: 131, b: 250 },
+            "metamorphic protolith unknown": { r: 0, g: 238, b: 0 },
+            "metasedimentary": { r: 216, g: 191, b: 216 },
+            "metasedimentary carbonate": { r: 127, g: 255, b: 0 },
+            "metasedimentary non-carbonate chemical or biochemical": { r: 255, g: 255, b: 224 },
+            "metasedimentary siliciclastic": { r: 255, g: 255, b: 0 },
+            "metasomatic": { r: 255, g: 0, b: 255 },
+            "mineralisation": { r: 155, g: 48, b: 255 },
+            "organic-rich rock": { r: 202, g: 225, b: 255 },
+            "regolith": { r: 0, g: 191, b: 255 },
+            "sedimentary": { r: 0, g: 245, b: 255 },
+            "sedimentary carbonate": { r: 255, g: 215, b: 0 },
+            "sedimentary non-carbonate chemical or biochemical": { r: 211, g: 211, b: 211 },
+            "sedimentary siliciclastic": { r: 192, g: 192, b: 192 },
+            "unknown": { r: 255, g: 255, b: 255 },
+            "vein": { r: 0, g: 190, b: 140 }
+        }
     },
     worldView: {
         axisHelper: {
@@ -686,16 +892,6 @@ Config.preferences = {
         }
     }
 };
-
-var WorkerEvent = (function () {
-    function WorkerEvent() {
-    }
-    return WorkerEvent;
-}());
-WorkerEvent.XYZ_LOADED = "xyz.loaded";
-WorkerEvent.XYZ_BLOCK = "xyz.block";
-WorkerEvent.COLOR_LOADED = "color.loaded";
-WorkerEvent.COLOR_BLOCK = "color.block";
 
 var SurfaceLauncher = (function (_super) {
     __extends(SurfaceLauncher, _super);
@@ -733,20 +929,20 @@ var SurfaceLauncher = (function (_super) {
         worker.addEventListener("message", function (message) {
             var data = message.data;
             if (data.type === WorkerEvent.XYZ_LOADED) {
-                console.log("WorkerEvent.XYZ_LOADED: " + _this.since());
+                // console.log("WorkerEvent.XYZ_LOADED: " + this.since());
                 _this.completeGeometry(geometryState.geometry);
                 _this.checkComplete();
             }
             else if (data.type === WorkerEvent.XYZ_BLOCK) {
-                console.log("WorkerEvent.XYZ_BLOCK: " + _this.since());
+                // console.log("WorkerEvent.XYZ_BLOCK: " + this.since());
                 _this.extendGeometry(geometryState, data.data);
             }
             else if (data.type === WorkerEvent.COLOR_BLOCK) {
-                console.log("WorkerEvent.COLOR_BLOCK: " + _this.since());
+                // console.log("WorkerEvent.COLOR_BLOCK: " + this.since());
                 _this.extendHeatmapMaterial(heapMapState, options, data.data);
             }
             else if (data.type === WorkerEvent.COLOR_LOADED) {
-                console.log("WorkerEvent.COLOR_LOADED: " + _this.since());
+                // console.log("WorkerEvent.COLOR_LOADED: " + this.since());
                 _this.completeHeatmapMaterial(heapMapState.mask, options);
             }
         });
@@ -795,7 +991,7 @@ var SurfaceLauncher = (function (_super) {
     };
     SurfaceLauncher.prototype.extendHeatmapMaterial = function (_a, options, res) {
         var mask = _a.mask, context = _a.context, id = _a.id, d = _a.d;
-        console.log("createHeatmapMaterial continue: " + this.since());
+        // console.log("createHeatmapMaterial continue: " + this.since());
         res.forEach(function (_a) {
             var x = _a.x, y = _a.y, r = _a.r, g = _a.g, b = _a.b, a = _a.a;
             d[0] = r;
@@ -892,8 +1088,8 @@ var SurfaceManager = (function (_super) {
     SurfaceManager.prototype.parse = function () {
         var _this = this;
         this.surface = new Surface(this.options);
-        console.log("options1");
-        console.log(this.options);
+        // console.log("options1");
+        // console.log(this.options);
         this.surface.addEventListener(Explorer3d.WcsEsriImageryParser.BBOX_CHANGED_EVENT, function (event) {
             _this.dispatchEvent(event);
             _this.loadHiRes(event.data);
@@ -906,11 +1102,12 @@ var SurfaceManager = (function (_super) {
         }).catch(function (err) {
             Explorer3d.Logger.error("We failed in the simple example");
             Explorer3d.Logger.error(err);
+            throw err;
         });
     };
     SurfaceManager.prototype.loadHiRes = function (data) {
+        // console.log(data);
         var _this = this;
-        console.log(data);
         var aspectRatio = data.width / data.height;
         var width, height, imageWidth, imageHeight;
         if (aspectRatio > 1) {
@@ -994,6 +1191,9 @@ var View = (function () {
             _this.factory.show(surface);
             _this.fetchBoreholes(bbox);
             _this.fetchRocks(bbox);
+        }).catch(function (err) {
+            // If we can't get a surface we may as well give up because that is the 3D part.
+            _this.mappings.dead();
         });
     };
     View.prototype.fetchRocks = function (bbox) {

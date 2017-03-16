@@ -13,10 +13,10 @@ export class SurfaceWorker extends EventDispatcher {
    load(): Promise<any> {
       let options = Object.assign({}, this.options, {}, {template: this.options.template + "&store=false"});
       let restLoader = new Elevation.WcsXyzLoader(this.options);
-      console.log("Running surface worker");
+      // console.log("Running surface worker");
 
       return restLoader.load().then(res => {
-         console.log("Loaded surface worker xyz");
+         // console.log("Loaded surface worker xyz");
          this.createBlocks(res);
          return null;
       });
