@@ -6,6 +6,7 @@ export class Bind {
    // Keep all the DOM stuff together. Make the abstraction to the HTML here
    static dom = {
       target: document.getElementById("target"),
+      message: document.getElementById("messageBus"),
       body: document.body,
       verticalExaggeration: document.getElementById("verticalExaggeration"),
       verticalExaggerationView: document.getElementById("verticalExaggerationValue"),

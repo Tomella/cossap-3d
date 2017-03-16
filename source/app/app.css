@@ -19,8 +19,41 @@
 }
 
 .c3d-target {
+   position: relative;
    display: block;
    height: 50vw;
+}
+
+.c3d-target #target {
+   position: absolute;
+   top: 0px;
+   right: 0px;
+   left: 0px;
+   bottom: 0px;
+   z-index:0;
+}
+
+.c3d-target #messageBus {
+   border-radius: 4px;
+   padding: 5px;
+   color: white;
+   background-color: black;
+   position: absolute;
+   right: 10px;
+   top: 8px;
+   z-index:1;
+}
+
+.c3d-target #messageBus.success {
+   background-color: teal;
+}
+
+.c3d-target #messageBus.error {
+   background-color: darkred;
+}
+
+.c3d-target #messageBus.warn {
+   background-color: darkorange;
 }
 
 /* Big enough panel ----------- */
