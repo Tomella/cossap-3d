@@ -2,6 +2,7 @@ import { Bind } from "../app/bind";
 import { BoreholesManager } from "../boreholes/boreholesmanager";
 import { CossapCameraPositioner } from "./cossapcamerapositioner";
 import { ElevationLookup } from "../elevation/elevationlookup";
+import { LabelRenderer } from "../label/labelrenderer";
 import { Mappings } from "./mappings";
 import { MessageBus } from "../message/messagebus";
 import { RocksManager } from "../rocks/rocksmanager";
@@ -12,6 +13,7 @@ declare var proj4;
 
 export class View {
    elevationLookup: ElevationLookup;
+   labelRenderer: LabelRenderer;
    messageBus: MessageBus;
    factory;
    mappings: Mappings;
@@ -20,9 +22,7 @@ export class View {
    rocks: RocksManager;
 
    constructor(public bbox: number[], public options: any) {
-
       if (bbox) {
-         this.messageBus = MessageBus.instance;
          this.draw();
       } else {
          this.die();
@@ -34,16 +34,18 @@ export class View {
    }
 
    draw() {
+      this.messageBus = MessageBus.instance;
+      this.messageBus.log("Loading...");
+
       let options = Object.assign({}, this.options.surface);
       let bbox = this.bbox;
       // Grab ourselves a world factory
       let viewOptions = this.options.worldView;
       viewOptions.cameraPositioner = new CossapCameraPositioner();
-      let factory = this.factory = new Explorer3d.WorldFactory(this.options.target, viewOptions);
 
+      let factory = this.factory = new Explorer3d.WorldFactory(this.options.target, viewOptions);
       this.mappings = new Mappings(factory, Bind.dom);
       this.mappings.messageDispatcher = this.messageBus;
-      this.messageBus.log("Loading...");
 
       let ll = proj4("EPSG:4326", "EPSG:3857", [bbox[0], bbox[1]]);
       let ur = proj4("EPSG:4326", "EPSG:3857", [bbox[2], bbox[3]]);
