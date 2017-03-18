@@ -30,7 +30,14 @@
    right: 0px;
    left: 0px;
    bottom: 0px;
-   z-index:0;
+}
+
+.c3d-target #labelTarget {
+   position: absolute;
+   top: 0px;
+   right: 0px;
+   left: 0px;
+   bottom: 0px;
 }
 
 .c3d-target #messageBus {
@@ -83,6 +90,11 @@
 .texture, .opacity {
   clear: both;
   padding-top: 5px;
+}
+
+.label-renderer {
+   text-shadow: -1px 1px 1px rgb(0,0,0);
+   margin-left: 25px;
 }
 
 .texture label {

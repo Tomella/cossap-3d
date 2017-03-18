@@ -569,6 +569,72 @@ var RocksParticlesLauncher = (function (_super) {
     return RocksParticlesLauncher;
 }(THREE.EventDispatcher));
 
+var TextSprite = (function () {
+    function TextSprite(options) {
+        this.options = options;
+    }
+    TextSprite.prototype.make = function (message) {
+        var parameters = this.options;
+        var parms = Object.assign({
+            fontface: "Arial",
+            fontsize: 14,
+            padding: 12,
+            rounding: 0,
+            borderThickness: 2,
+            borderColor: { r: 0, g: 0, b: 0, a: 1.0 },
+            backgroundColor: { r: 255, g: 255, b: 255, a: 1 }
+        }, parameters ? parameters : {});
+        var scale = this.options.scale;
+        var canvas = document.createElement("canvas");
+        canvas.width = 64;
+        canvas.width = 24 + message.length * 5;
+        canvas.height = 48;
+        var context = canvas.getContext("2d");
+        context.font = parms.fontsize + "px " + parms.fontface;
+        // get size data (height depends only on font size)
+        var metrics = context.measureText(message);
+        var textWidth = metrics.width;
+        // background color
+        context.fillStyle = "rgba(" + parms.backgroundColor.r + "," + parms.backgroundColor.g + ","
+            + parms.backgroundColor.b + "," + parms.backgroundColor.a + ")";
+        // border color
+        context.strokeStyle = "rgba(" + parms.borderColor.r + "," + parms.borderColor.g + ","
+            + parms.borderColor.b + "," + parms.borderColor.a + ")";
+        context.lineWidth = parms.borderThickness;
+        this.roundRect(context, parms.borderThickness / 2, parms.borderThickness / 2, textWidth + parms.borderThickness, parms.fontsize * 1.4 + parms.borderThickness, parms.rounding);
+        // 1.4 is extra height factor for text below baseline: g,j,p,q.
+        // text color
+        context.fillStyle = "rgba(0, 0, 0, 1.0)";
+        context.fillText(message, parms.borderThickness, parms.fontsize + parms.borderThickness);
+        // canvas contents will be used for a texture
+        var texture = new THREE.Texture(canvas);
+        texture.needsUpdate = true;
+        var spriteMaterial = new THREE.SpriteMaterial({
+            map: texture
+        });
+        var sprite = new THREE.Sprite(spriteMaterial);
+        sprite.scale.set(scale * 25, scale * 15, 1); // scale * 1);
+        return sprite;
+    };
+    // function for drawing rounded rectangles
+    TextSprite.prototype.roundRect = function (ctx, x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+    };
+    return TextSprite;
+}());
+
 var RocksContainer = (function (_super) {
     __extends(RocksContainer, _super);
     function RocksContainer(feature, options) {
@@ -577,7 +643,7 @@ var RocksContainer = (function (_super) {
         _this.options = options;
         _this.container = new THREE.Object3D();
         _this.id = feature.id;
-        var zoom = +_this.id.split("/")[0];
+        var zoom = _this.zoom = +_this.id.split("/")[0];
         _this.widthFactor = 3000 / Math.pow(2, zoom);
         _this.createCluster();
         return _this;
@@ -611,6 +677,7 @@ var RocksContainer = (function (_super) {
         var xy = this.feature.geometry.coordinates;
         var count = this.count;
         var widthFactor = this.widthFactor;
+        var zoom = this.zoom;
         var container = this.container;
         if (this.options.elevationLookup) {
             this.options.elevationLookup.intersect(xy).then(function (intersection) {
@@ -625,6 +692,7 @@ var RocksContainer = (function (_super) {
             this.optionalParticles();
         }
         function createCluster(xy, z) {
+            var group = new THREE.Object3D();
             var texture = new THREE.TextureLoader().load("resources/imgs/red_brick.jpg");
             var material = new THREE.MeshPhongMaterial({
                 map: texture,
@@ -634,8 +702,13 @@ var RocksContainer = (function (_super) {
             var object = new THREE.Mesh(new THREE.CylinderBufferGeometry(radius, radius, radius * 1.2, 20), material);
             object.rotation.x = Math.PI / 2;
             object.position.set(xy[0], xy[1], z);
-            container.add(object);
-            return object;
+            var sprite = new TextSprite({ scale: 150000000 / Math.pow(zoom, 5.5), borderColor: { r: 255, g: 255, b: 255, a: 1 }, rounding: 1, fontsize: 14 });
+            var text = sprite.make(count.toLocaleString());
+            text.position.set(xy[0], xy[1], z + radius * 0.6);
+            group.add(text);
+            group.add(object);
+            container.add(group);
+            return group;
         }
     };
     Object.defineProperty(RocksContainer.prototype, "count", {
@@ -651,6 +724,7 @@ var RocksContainer = (function (_super) {
     return RocksContainer;
 }(THREE.EventDispatcher));
 RocksContainer.PARTICLES_LOADED = WorkerEvent.PARTICLES_LOADED;
+RocksContainer.PARTICLES_COMPLETE = WorkerEvent.PARTICLES_COMPLETE;
 
 var RocksLoader = (function () {
     function RocksLoader(options) {
@@ -790,12 +864,18 @@ var RocksManager = (function () {
                     featuresService: original.featuresService,
                     elevationLookup: original.elevationLookup
                 };
+                if (options_1.summaryOnly) {
+                    MessageBus.instance.warn("Fetching rocks summary only. Too many points to render!");
+                }
                 _this.containers = data.features.map(function (feature) { return new RocksContainer(featureToEpsg3857(feature), options_1); });
                 _this.container = new THREE.Object3D();
                 _this.container.add(_this.rocksParticles.points);
                 _this.containers.forEach(function (container) {
                     container.addEventListener(RocksContainer.PARTICLES_LOADED, function (particlesEvent) {
                         _this.rocksParticles.add(particlesEvent.data);
+                    });
+                    container.addEventListener(RocksContainer.PARTICLES_COMPLETE, function (particlesEvent) {
+                        MessageBus.instance.log("Removing rocks properties marker as all samples fetched", 4000);
                     });
                     _this.container.add(container.create());
                 });
@@ -1297,7 +1377,6 @@ var View = (function () {
         this.bbox = bbox;
         this.options = options;
         if (bbox) {
-            this.messageBus = MessageBus.instance;
             this.draw();
         }
         else {
@@ -1309,6 +1388,8 @@ var View = (function () {
     };
     View.prototype.draw = function () {
         var _this = this;
+        this.messageBus = MessageBus.instance;
+        this.messageBus.log("Loading...");
         var options = Object.assign({}, this.options.surface);
         var bbox = this.bbox;
         // Grab ourselves a world factory
@@ -1317,7 +1398,6 @@ var View = (function () {
         var factory = this.factory = new Explorer3d.WorldFactory(this.options.target, viewOptions);
         this.mappings = new Mappings(factory, Bind.dom);
         this.mappings.messageDispatcher = this.messageBus;
-        this.messageBus.log("Loading...");
         var ll = proj4("EPSG:4326", "EPSG:3857", [bbox[0], bbox[1]]);
         var ur = proj4("EPSG:4326", "EPSG:3857", [bbox[2], bbox[3]]);
         options.bbox = ll;
