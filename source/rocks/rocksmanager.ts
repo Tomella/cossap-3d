@@ -1,3 +1,5 @@
+import { LabelRenderer } from "../label/labelrenderer";
+import { MessageBus } from "../message/messagebus";
 import { RocksContainer } from "./rockscontainer";
 import { RocksLoader } from "./rocksloader";
 import { RocksParticles } from "./rocksparticles";
@@ -62,6 +64,9 @@ export class RocksManager {
                elevationLookup: original.elevationLookup
             };
 
+            if (options.summaryOnly) {
+               MessageBus.instance.warn("Fetching rocks summary only. Too many points to render!");
+            }
 
             this.containers = data.features.map(feature => new RocksContainer(featureToEpsg3857(feature), options));
             this.container = new THREE.Object3D();
@@ -70,6 +75,9 @@ export class RocksManager {
             this.containers.forEach(container => {
                container.addEventListener(RocksContainer.PARTICLES_LOADED, particlesEvent => {
                   this.rocksParticles.add(particlesEvent.data);
+               });
+               container.addEventListener(RocksContainer.PARTICLES_COMPLETE, particlesEvent => {
+                  MessageBus.instance.log("Removing rocks properties marker as all samples fetched", 4000);
                });
                this.container.add(container.create());
             });
