@@ -1,12 +1,16 @@
 import { ElevationLookup } from "../elevation/elevationlookup";
 import { RocksParticlesLauncher } from "../workers/launcher/rocksparticleslauncher";
+import { TextSprite } from "../textsprite/textsprite";
 import { WorkerEvent } from "../workers/workerevent";
 
 export class RocksContainer extends THREE.EventDispatcher {
    static PARTICLES_LOADED = WorkerEvent.PARTICLES_LOADED;
+   static PARTICLES_COMPLETE = WorkerEvent.PARTICLES_COMPLETE;
+
    private container: THREE.Object3D;
    private cluster: THREE.Object3D;
    widthFactor: number;
+   zoom: number;
    id: string;
 
    constructor(public feature: GeoJSON.Feature<GeoJSON.Point>,
@@ -24,7 +28,7 @@ export class RocksContainer extends THREE.EventDispatcher {
       super();
       this.container = new THREE.Object3D();
       this.id = feature.id;
-      let zoom = +this.id.split("/")[0];
+      let zoom = this.zoom = +this.id.split("/")[0];
       this.widthFactor = 3000 / Math.pow(2, zoom);
 
       this.createCluster();
@@ -59,6 +63,7 @@ export class RocksContainer extends THREE.EventDispatcher {
       let xy = this.feature.geometry.coordinates;
       let count = this.count;
       let widthFactor = this.widthFactor;
+      let zoom = this.zoom;
       let container = this.container;
 
       if (this.options.elevationLookup) {
@@ -74,6 +79,7 @@ export class RocksContainer extends THREE.EventDispatcher {
       }
 
       function createCluster(xy, z) {
+         let group = new THREE.Object3D();
          let texture = new THREE.TextureLoader().load( "resources/imgs/red_brick.jpg" );
          let material = new THREE.MeshPhongMaterial({
                map: texture,
@@ -83,8 +89,16 @@ export class RocksContainer extends THREE.EventDispatcher {
          let object = new THREE.Mesh( new THREE.CylinderBufferGeometry(radius, radius, radius * 1.2, 20), material );
          object.rotation.x = Math.PI / 2;
          object.position.set( xy[0], xy[1], z);
-         container.add( object );
-         return object;
+
+         let sprite = new TextSprite({scale: 150000000 / Math.pow(zoom, 5.5), borderColor: { r: 255, g: 255, b: 255, a: 1 }, rounding: 1, fontsize: 14});
+         let text = sprite.make(count.toLocaleString());
+
+         text.position.set(xy[0], xy[1], z + radius * 0.6);
+         group.add(text);
+
+         group.add(object);
+         container.add(group);
+         return group;
       }
    }
 
