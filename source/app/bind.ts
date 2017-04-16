@@ -8,6 +8,7 @@ export class Bind {
       target: document.getElementById("target"),
       message: document.getElementById("messageBus"),
       body: document.body,
+      elevationView: document.getElementById("intersection"),
       verticalExaggeration: document.getElementById("verticalExaggeration"),
       verticalExaggerationView: document.getElementById("verticalExaggerationValue"),
       surfaceOpacity: document.getElementById("surfaceOpacity"),

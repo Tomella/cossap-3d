@@ -1,7 +1,9 @@
 import { Bind } from "../app/bind";
 import { BoreholesManager } from "../boreholes/boreholesmanager";
 import { CossapCameraPositioner } from "./cossapcamerapositioner";
+import { ElevationBroadcaster } from "../elevation/elevationbroadcaster";
 import { ElevationLookup } from "../elevation/elevationlookup";
+import { ElevationView } from "./elevationview";
 import { LabelRenderer } from "../label/labelrenderer";
 import { Mappings } from "./mappings";
 import { MessageBus } from "../message/messagebus";
@@ -13,7 +15,7 @@ declare var proj4;
 
 export class View {
    elevationLookup: ElevationLookup;
-   labelRenderer: LabelRenderer;
+   elevationView: ElevationView;
    messageBus: MessageBus;
    factory;
    mappings: Mappings;
@@ -66,6 +68,16 @@ export class View {
       this.surface.addEventListener(SurfaceEvent.SURFACE_ELEVATION, event => {
          this.messageBus.log("Loaded elevation details", 4000);
          this.elevationLookup.setMesh(event.data);
+
+         let elevationBroadcaster = new ElevationBroadcaster( Bind.dom.target);
+         elevationBroadcaster.setMesh(event.data);
+         elevationBroadcaster.setWorld(factory.state.world);
+
+         this.elevationView = new ElevationView(elevationBroadcaster, Bind.dom.elevationView, function (vector3: THREE.Vector3) {
+            let point = proj4("EPSG:3857", "EPSG:4326", [vector3.x, vector3.y]);
+            return new THREE.Vector3(point[0], point[1], vector3.z);
+         });
+
       });
 
       this.surface.addEventListener(SurfaceEvent.MATERIAL_LOADED, event => {

@@ -169,6 +169,7 @@ Bind.dom = {
     target: document.getElementById("target"),
     message: document.getElementById("messageBus"),
     body: document.body,
+    elevationView: document.getElementById("intersection"),
     verticalExaggeration: document.getElementById("verticalExaggeration"),
     verticalExaggerationView: document.getElementById("verticalExaggerationValue"),
     surfaceOpacity: document.getElementById("surfaceOpacity"),
@@ -246,6 +247,50 @@ var CossapCameraPositioner = (function (_super) {
     return CossapCameraPositioner;
 }(Explorer3d.CameraPositioner));
 
+var ElevationBroadcaster = (function (_super) {
+    __extends(ElevationBroadcaster, _super);
+    function ElevationBroadcaster(element) {
+        var _this = _super.call(this) || this;
+        _this.element = element;
+        var timer;
+        var raycaster = new THREE.Raycaster();
+        var down, sx, sy;
+        element.addEventListener("mousemove", function (event) {
+            // Do nothing if we do not have a mesh.
+            if (!_this.mesh || !_this.world.camera) {
+                return;
+            }
+            var cX = event.offsetX;
+            var cY = event.offsetY;
+            var mouse = new THREE.Vector2();
+            event.preventDefault();
+            mouse.x = (cX / element.clientWidth) * 2 - 1;
+            mouse.y = -(cY / element.clientHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, _this.world.camera);
+            var intersects = raycaster.intersectObject(_this.mesh);
+            if (intersects.length > 0) {
+                var feature = intersects[0];
+                var point = feature.point;
+                point.z /= _this.world.dataContainer.scale.z;
+                _this.dispatchEvent({
+                    type: ElevationBroadcaster.OVER_POINT,
+                    point: point
+                });
+                console.log(feature);
+            }
+        });
+        return _this;
+    }
+    ElevationBroadcaster.prototype.setMesh = function (mesh) {
+        this.mesh = mesh;
+    };
+    ElevationBroadcaster.prototype.setWorld = function (world) {
+        this.world = world;
+    };
+    return ElevationBroadcaster;
+}(THREE.EventDispatcher));
+ElevationBroadcaster.OVER_POINT = "overpoint";
+
 var ElevationLookup = (function () {
     function ElevationLookup(mesh) {
         this.mesh = mesh;
@@ -308,6 +353,35 @@ function getElevation(mesh, point) {
     var intersection = getIntersection(mesh, point);
     var z = intersection ? intersection.point.z : 0;
     return z;
+}
+
+/**
+ * Take a event dispatcher that dispatches "overpoint" events
+ * and returns a point. Display the point
+ */
+var ElevationView = (function () {
+    function ElevationView(elevationBroadcaster, element, projectionFn) {
+        if (projectionFn === void 0) { projectionFn = projectionDefault; }
+        var timer;
+        var raycaster = new THREE.Raycaster();
+        var down, sx, sy;
+        elevationBroadcaster.addEventListener("overpoint", function (event) {
+            var point = event.point;
+            var transformed = projectionFn(point);
+            element.innerHTML = "Approx Elev.: " + Math.round(transformed.z) +
+                "m Lng: " + transformed.x.toFixed(4) +
+                "° Lat: " + transformed.y.toFixed(4) +
+                "°";
+            clearTimeout(timer);
+            timer = setTimeout(function () {
+                element.innerHTML = "";
+            }, 4000);
+        });
+    }
+    return ElevationView;
+}());
+function projectionDefault(point) {
+    return point;
 }
 
 var MessageDispatcher = (function () {
@@ -704,6 +778,9 @@ var RocksContainer = (function (_super) {
             object.position.set(xy[0], xy[1], z);
             var sprite = new TextSprite({ scale: 150000000 / Math.pow(zoom, 5.5), borderColor: { r: 255, g: 255, b: 255, a: 1 }, rounding: 1, fontsize: 14 });
             var text = sprite.make(count.toLocaleString());
+            text.material.map.image.addEventListener("mouseover", function (event) {
+                console.log(event);
+            });
             text.position.set(xy[0], xy[1], z + radius * 0.6);
             group.add(text);
             group.add(object);
@@ -1413,6 +1490,13 @@ var View = (function () {
         this.surface.addEventListener(SurfaceEvent.SURFACE_ELEVATION, function (event) {
             _this.messageBus.log("Loaded elevation details", 4000);
             _this.elevationLookup.setMesh(event.data);
+            var elevationBroadcaster = new ElevationBroadcaster(Bind.dom.target);
+            elevationBroadcaster.setMesh(event.data);
+            elevationBroadcaster.setWorld(factory.state.world);
+            _this.elevationView = new ElevationView(elevationBroadcaster, Bind.dom.elevationView, function (vector3) {
+                var point = proj4("EPSG:3857", "EPSG:4326", [vector3.x, vector3.y]);
+                return new THREE.Vector3(point[0], point[1], vector3.z);
+            });
         });
         this.surface.addEventListener(SurfaceEvent.MATERIAL_LOADED, function (event) {
             var data = event.data;
