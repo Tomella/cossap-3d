@@ -1,16 +1,19 @@
 import { featureToEpsg3857, pointToEpsg3857 } from "../../utils/geoutils";
 import { Config } from "../../app/config";
 import { EventDispatcher } from "../../utils/eventdispatcher";
+import { EllipsoidalToAhd } from "../../mapper/ellipsoidaltoahd";
 import { WorkerEvent } from "../workerevent";
 declare var proj4;
 
 export class ParticlesWorker  extends EventDispatcher {
    static BLOCK_SIZE = 20000;
    startIndex: number;
+   mapper: EllipsoidalToAhd;
 
    constructor(public options: {template: string, any, id: string, bbox: number[]}) {
       super();
       this.startIndex = 0;
+      this.mapper = new EllipsoidalToAhd();
    }
 
    load() {
@@ -59,7 +62,7 @@ export class ParticlesWorker  extends EventDispatcher {
             point: {
                x: point[0],
                y: point[1],
-               z: feature.properties["SAMPLE_ELEVATION"] ? feature.properties["SAMPLE_ELEVATION"] : 0
+               z: this.mapper.toAhd(point[0], point[1], feature.properties["SAMPLE_ELEVATION"] ? feature.properties["SAMPLE_ELEVATION"] : 0)
             },
             color
          };

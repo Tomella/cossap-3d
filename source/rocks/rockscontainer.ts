@@ -92,9 +92,9 @@ export class RocksContainer extends THREE.EventDispatcher {
 
          let sprite = new TextSprite({scale: 150000000 / Math.pow(zoom, 5.5), borderColor: { r: 255, g: 255, b: 255, a: 1 }, rounding: 1, fontsize: 14});
          let text = sprite.make(count.toLocaleString());
-         text.material.map.image.addEventListener("mouseover", event => {
-            console.log(event)
-         })
+         // text.material.map.image.addEventListener("mouseover", event => {
+         //    console.log(event);
+         // });
 
          text.position.set(xy[0], xy[1], z + radius * 0.6);
          group.add(text);

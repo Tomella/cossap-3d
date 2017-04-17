@@ -4,6 +4,7 @@ import { CossapCameraPositioner } from "./cossapcamerapositioner";
 import { ElevationBroadcaster } from "../elevation/elevationbroadcaster";
 import { ElevationLookup } from "../elevation/elevationlookup";
 import { ElevationView } from "./elevationview";
+import { EllipsoidalToAhd } from "../mapper/ellipsoidaltoahd";
 import { LabelRenderer } from "../label/labelrenderer";
 import { Mappings } from "./mappings";
 import { MessageBus } from "../message/messagebus";
@@ -67,11 +68,12 @@ export class View {
 
       this.surface.addEventListener(SurfaceEvent.SURFACE_ELEVATION, event => {
          this.messageBus.log("Loaded elevation details", 4000);
+         this.elevationLookup.setWorld(factory.state.world);
          this.elevationLookup.setMesh(event.data);
 
          let elevationBroadcaster = new ElevationBroadcaster( Bind.dom.target);
-         elevationBroadcaster.setMesh(event.data);
          elevationBroadcaster.setWorld(factory.state.world);
+         elevationBroadcaster.setMesh(event.data);
 
          this.elevationView = new ElevationView(elevationBroadcaster, Bind.dom.elevationView, function (vector3: THREE.Vector3) {
             let point = proj4("EPSG:3857", "EPSG:4326", [vector3.x, vector3.y]);
@@ -114,7 +116,15 @@ export class View {
    }
 
    fetchBoreholes(bbox) {
-      this.boreholes = new BoreholesManager(Object.assign({ bbox }, this.options.boreholes));
+      let options = Object.assign({ bbox }, this.options.boreholes);
+      // We only want to massage boreholes to match surface if zoomed in tightly as it is expensive.
+      if (bbox[3] - bbox[1] < 0.001 && bbox[2] - bbox[0] < 0.001) {
+        options.elevationLookup = (points) => this.elevationLookup.lookupPoints(points);
+      } else {
+         let ellipsoidalToAhd = new EllipsoidalToAhd();
+         options.elevationLookup = (points) => ellipsoidalToAhd.pointsToAhd(points);
+      }
+      this.boreholes = new BoreholesManager(options);
       this.boreholes.parse().then(data => {
          if (data) {
             this.messageBus.log("Boreholes complete", 4000);

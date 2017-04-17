@@ -1,11 +1,4 @@
 import { ElevationLookup } from "./elevationlookup";
-declare namespace Explorer3d {
-   export class World {
-      camera: THREE.Camera;
-      dataContainer: THREE.Object3D;
-   }
-
-};
 
 export class ElevationBroadcaster extends THREE.EventDispatcher {
    static OVER_POINT = "overpoint";
@@ -39,13 +32,12 @@ export class ElevationBroadcaster extends THREE.EventDispatcher {
 
          if (intersects.length > 0) {
             let feature = intersects[0];
-            let point = feature.point;
+            let point: THREE.Vector3 = feature.point;
             point.z /= this.world.dataContainer.scale.z;
             this.dispatchEvent({
                type: ElevationBroadcaster.OVER_POINT,
                point: point
             });
-            console.log(feature);
          }
       });
    }

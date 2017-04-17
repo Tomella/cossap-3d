@@ -10,6 +10,21 @@ function __extends(d, b) {
     d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
 }
 
+
+
+
+
+
+
+function __awaiter(thisArg, _arguments, P, generator) {
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator.throw(value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : new P(function (resolve) { resolve(result.value); }).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments)).next());
+    });
+}
+
 var EventDispatcher = (function () {
     function EventDispatcher() {
     }
@@ -277,12 +292,46 @@ Config.preferences = {
     }
 };
 
+/**
+ * A very rough conversion from GDA94 ellipsoidal to
+ * Australian Height Datum for large area views. It's aim is speed, not accuracy.
+ * It's done by eyeballing the well heads on the map and is close enough.
+ */
+var EllipsoidalToAhd = (function () {
+    function EllipsoidalToAhd() {
+    }
+    EllipsoidalToAhd.prototype.toAhd = function (lng, lat, gda94Elev) {
+        var deltaLat = lat - EllipsoidalToAhd.zeroLat;
+        var deltaLng = lng - EllipsoidalToAhd.zeroLng;
+        var dx = deltaLng * EllipsoidalToAhd.rampLng;
+        var dy = deltaLat * EllipsoidalToAhd.rampLat;
+        var elevation = gda94Elev - deltaLat * EllipsoidalToAhd.rampLat - deltaLng * EllipsoidalToAhd.rampLng;
+        return elevation;
+    };
+    EllipsoidalToAhd.prototype.pointsToAhd = function (points) {
+        return __awaiter(this, void 0, void 0, function () {
+            var _this = this;
+            return __generator(this, function (_a) {
+                return [2 /*return*/, new Promise(function (resolve, reject) {
+                        resolve(points.map(function (point) { return _this.toAhd(point[0], point[1], point[2]); }));
+                    })];
+            });
+        });
+    };
+    return EllipsoidalToAhd;
+}());
+EllipsoidalToAhd.zeroLat = -3123471; // -27;
+EllipsoidalToAhd.zeroLng = 14471533; // 130;
+EllipsoidalToAhd.rampLat = 0.0000282; // 3.1 Just  a rough approximation
+EllipsoidalToAhd.rampLng = 0.0000182; // 2;
+
 var ParticlesWorker = (function (_super) {
     __extends(ParticlesWorker, _super);
     function ParticlesWorker(options) {
         var _this = _super.call(this) || this;
         _this.options = options;
         _this.startIndex = 0;
+        _this.mapper = new EllipsoidalToAhd();
         return _this;
     }
     ParticlesWorker.prototype.load = function () {
@@ -314,6 +363,7 @@ var ParticlesWorker = (function (_super) {
         });
     };
     ParticlesWorker.prototype.mapFeatures = function (features) {
+        var _this = this;
         var bbox = this.options.bbox;
         var colorMap = Config.preferences.rocks.lithologyGroups;
         var unknown = colorMap.unknown;
@@ -327,7 +377,7 @@ var ParticlesWorker = (function (_super) {
                 point: {
                     x: point[0],
                     y: point[1],
-                    z: feature.properties["SAMPLE_ELEVATION"] ? feature.properties["SAMPLE_ELEVATION"] : 0
+                    z: _this.mapper.toAhd(point[0], point[1], feature.properties["SAMPLE_ELEVATION"] ? feature.properties["SAMPLE_ELEVATION"] : 0)
                 },
                 color: color
             };

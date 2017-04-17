@@ -10,6 +10,21 @@ function __extends(d, b) {
     d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
 }
 
+
+
+
+
+
+
+function __awaiter(thisArg, _arguments, P, generator) {
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator.throw(value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : new P(function (resolve) { resolve(result.value); }).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments)).next());
+    });
+}
+
 var query = function () {
     // This function is anonymous, is executed immediately and
     // the return value is assigned to QueryString!
@@ -208,8 +223,22 @@ var BoreholesManager = (function () {
             var lineMaterial = new THREE.LineBasicMaterial({ color: 0xffaaaa, linewidth: 1 });
             var lineGeom = new THREE.Geometry();
             var bbox = _this.options.bbox;
-            data.filter(function (hole) { return hole.lon > bbox[0] && hole.lon <= bbox[2] && hole.lat > bbox[1] && hole.lat <= bbox[3]; })
-                .forEach(function (hole) {
+            var holes = data.filter(function (hole) { return hole.lon > bbox[0] && hole.lon <= bbox[2] && hole.lat > bbox[1] && hole.lat <= bbox[3]; });
+            if (_this.options.elevationLookup) {
+                var coords_1 = holes.map(function (hole) { return proj4("EPSG:4283", "EPSG:3857", [hole.lon, hole.lat, hole.elevation]); });
+                return _this.options.elevationLookup(coords_1).then(function (elevations) {
+                    coords_1.forEach(function (coord, index) {
+                        var elevation = elevations[index];
+                        var hole = holes[index];
+                        var length = hole.length != null ? hole.length : 10;
+                        lineGeom.vertices.push(new THREE.Vector3(coord[0], coord[1], elevation));
+                        lineGeom.vertices.push(new THREE.Vector3(coord[0], coord[1], elevation - length));
+                    });
+                    lineGeom.computeBoundingSphere();
+                    return _this.lines = new THREE.LineSegments(lineGeom, lineMaterial);
+                });
+            }
+            holes.forEach(function (hole) {
                 var coord = proj4("EPSG:4283", "EPSG:3857", [hole.lon, hole.lat]);
                 var length = hole.length != null ? hole.length : 10;
                 var elevation = hole.elevation < -90000 ? 0 : hole.elevation;
@@ -276,7 +305,6 @@ var ElevationBroadcaster = (function (_super) {
                     type: ElevationBroadcaster.OVER_POINT,
                     point: point
                 });
-                console.log(feature);
             }
         });
         return _this;
@@ -298,6 +326,9 @@ var ElevationLookup = (function () {
             this.callbacks = [];
         }
     }
+    ElevationLookup.prototype.setWorld = function (world) {
+        this.world = world;
+    };
     ElevationLookup.prototype.setMesh = function (mesh) {
         this.mesh = mesh;
         if (this.callbacks) {
@@ -327,14 +358,30 @@ var ElevationLookup = (function () {
         var _this = this;
         if (this.mesh) {
             return new Promise(function (resolve, reject) {
-                resolve(getElevation(_this.mesh, point));
+                resolve(getElevation(_this.mesh, point, _this.world));
             });
         }
         else {
             return new Promise(function (resolve, reject) {
                 _this.callbacks.push(function (mesh) {
                     console.log("Calling back");
-                    resolve(getElevation(mesh, point));
+                    resolve(getElevation(mesh, point, _this.world));
+                });
+            });
+        }
+    };
+    ElevationLookup.prototype.lookupPoints = function (points) {
+        var _this = this;
+        if (this.mesh) {
+            return new Promise(function (resolve, reject) {
+                resolve(points.map(function (point) { return getElevation(_this.mesh, point, _this.world); }));
+            });
+        }
+        else {
+            return new Promise(function (resolve, reject) {
+                _this.callbacks.push(function (mesh) {
+                    console.log("Calling back");
+                    resolve(points.map(function (point) { return getElevation(_this.mesh, point, _this.world); }));
                 });
             });
         }
@@ -349,10 +396,10 @@ function getIntersection(mesh, point) {
     var result = raycaster.intersectObject(mesh);
     return result.length ? result[0] : null;
 }
-function getElevation(mesh, point) {
+function getElevation(mesh, point, world) {
     var intersection = getIntersection(mesh, point);
     var z = intersection ? intersection.point.z : 0;
-    return z;
+    return z / world.dataContainer.scale.z;
 }
 
 /**
@@ -383,6 +430,39 @@ var ElevationView = (function () {
 function projectionDefault(point) {
     return point;
 }
+
+/**
+ * A very rough conversion from GDA94 ellipsoidal to
+ * Australian Height Datum for large area views. It's aim is speed, not accuracy.
+ * It's done by eyeballing the well heads on the map and is close enough.
+ */
+var EllipsoidalToAhd = (function () {
+    function EllipsoidalToAhd() {
+    }
+    EllipsoidalToAhd.prototype.toAhd = function (lng, lat, gda94Elev) {
+        var deltaLat = lat - EllipsoidalToAhd.zeroLat;
+        var deltaLng = lng - EllipsoidalToAhd.zeroLng;
+        var dx = deltaLng * EllipsoidalToAhd.rampLng;
+        var dy = deltaLat * EllipsoidalToAhd.rampLat;
+        var elevation = gda94Elev - deltaLat * EllipsoidalToAhd.rampLat - deltaLng * EllipsoidalToAhd.rampLng;
+        return elevation;
+    };
+    EllipsoidalToAhd.prototype.pointsToAhd = function (points) {
+        return __awaiter(this, void 0, void 0, function () {
+            var _this = this;
+            return __generator(this, function (_a) {
+                return [2 /*return*/, new Promise(function (resolve, reject) {
+                        resolve(points.map(function (point) { return _this.toAhd(point[0], point[1], point[2]); }));
+                    })];
+            });
+        });
+    };
+    return EllipsoidalToAhd;
+}());
+EllipsoidalToAhd.zeroLat = -3123471; // -27;
+EllipsoidalToAhd.zeroLng = 14471533; // 130;
+EllipsoidalToAhd.rampLat = 0.0000282; // 3.1 Just  a rough approximation
+EllipsoidalToAhd.rampLng = 0.0000182; // 2;
 
 var MessageDispatcher = (function () {
     function MessageDispatcher(element, dispatcher) {
@@ -778,9 +858,9 @@ var RocksContainer = (function (_super) {
             object.position.set(xy[0], xy[1], z);
             var sprite = new TextSprite({ scale: 150000000 / Math.pow(zoom, 5.5), borderColor: { r: 255, g: 255, b: 255, a: 1 }, rounding: 1, fontsize: 14 });
             var text = sprite.make(count.toLocaleString());
-            text.material.map.image.addEventListener("mouseover", function (event) {
-                console.log(event);
-            });
+            // text.material.map.image.addEventListener("mouseover", event => {
+            //    console.log(event);
+            // });
             text.position.set(xy[0], xy[1], z + radius * 0.6);
             group.add(text);
             group.add(object);
@@ -1489,10 +1569,11 @@ var View = (function () {
         });
         this.surface.addEventListener(SurfaceEvent.SURFACE_ELEVATION, function (event) {
             _this.messageBus.log("Loaded elevation details", 4000);
+            _this.elevationLookup.setWorld(factory.state.world);
             _this.elevationLookup.setMesh(event.data);
             var elevationBroadcaster = new ElevationBroadcaster(Bind.dom.target);
-            elevationBroadcaster.setMesh(event.data);
             elevationBroadcaster.setWorld(factory.state.world);
+            elevationBroadcaster.setMesh(event.data);
             _this.elevationView = new ElevationView(elevationBroadcaster, Bind.dom.elevationView, function (vector3) {
                 var point = proj4("EPSG:3857", "EPSG:4326", [vector3.x, vector3.y]);
                 return new THREE.Vector3(point[0], point[1], vector3.z);
@@ -1530,7 +1611,16 @@ var View = (function () {
     };
     View.prototype.fetchBoreholes = function (bbox) {
         var _this = this;
-        this.boreholes = new BoreholesManager(Object.assign({ bbox: bbox }, this.options.boreholes));
+        var options = Object.assign({ bbox: bbox }, this.options.boreholes);
+        // We only want to massage boreholes to match surface if zoomed in tightly as it is expensive.
+        if (bbox[3] - bbox[1] < 0.001 && bbox[2] - bbox[0] < 0.001) {
+            options.elevationLookup = function (points) { return _this.elevationLookup.lookupPoints(points); };
+        }
+        else {
+            var ellipsoidalToAhd_1 = new EllipsoidalToAhd();
+            options.elevationLookup = function (points) { return ellipsoidalToAhd_1.pointsToAhd(points); };
+        }
+        this.boreholes = new BoreholesManager(options);
         this.boreholes.parse().then(function (data) {
             if (data) {
                 _this.messageBus.log("Boreholes complete", 4000);
