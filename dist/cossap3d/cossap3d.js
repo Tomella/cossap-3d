@@ -444,7 +444,7 @@ var EllipsoidalToAhd = (function () {
         var deltaLng = lng - EllipsoidalToAhd.zeroLng;
         var dx = deltaLng * EllipsoidalToAhd.rampLng;
         var dy = deltaLat * EllipsoidalToAhd.rampLat;
-        var elevation = gda94Elev - deltaLat * EllipsoidalToAhd.rampLat - deltaLng * EllipsoidalToAhd.rampLng;
+        var elevation = gda94Elev - deltaLat * EllipsoidalToAhd.rampLat - deltaLng * EllipsoidalToAhd.rampLng - 10;
         return elevation;
     };
     EllipsoidalToAhd.prototype.pointsToAhd = function (points) {
@@ -461,7 +461,7 @@ var EllipsoidalToAhd = (function () {
 }());
 EllipsoidalToAhd.zeroLat = -3123471; // -27;
 EllipsoidalToAhd.zeroLng = 14471533; // 130;
-EllipsoidalToAhd.rampLat = 0.0000282; // 3.1 Just  a rough approximation
+EllipsoidalToAhd.rampLat = 0.0000285; // 3.1 Just  a rough approximation
 EllipsoidalToAhd.rampLng = 0.0000182; // 2;
 
 var MessageDispatcher = (function () {

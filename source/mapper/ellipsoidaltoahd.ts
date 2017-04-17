@@ -6,7 +6,7 @@
 export class EllipsoidalToAhd {
    static zeroLat = -3123471;  // -27;
    static zeroLng = 14471533;  // 130;
-   static rampLat = 0.0000282; // 3.1 Just  a rough approximation
+   static rampLat = 0.0000285; // 3.1 Just  a rough approximation
    static rampLng = 0.0000182; // 2;
 
    toAhd(lng, lat, gda94Elev) {
@@ -15,7 +15,7 @@ export class EllipsoidalToAhd {
       let dx = deltaLng * EllipsoidalToAhd.rampLng;
       let dy = deltaLat * EllipsoidalToAhd.rampLat;
 
-      let elevation = gda94Elev - deltaLat * EllipsoidalToAhd.rampLat - deltaLng * EllipsoidalToAhd.rampLng;
+      let elevation = gda94Elev - deltaLat * EllipsoidalToAhd.rampLat - deltaLng * EllipsoidalToAhd.rampLng - 10;
       return elevation;
    }
 
